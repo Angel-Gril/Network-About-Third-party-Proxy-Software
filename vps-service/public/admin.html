@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Private Subscription</title>
+  <style>
+    :root { color-scheme: light; font-family: Inter, "Segoe UI", sans-serif; background: #f4f6f8; color: #17202a; }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    header { height: 56px; display: flex; align-items: center; padding: 0 24px; background: #17202a; color: #fff; }
+    h1 { margin: 0; font-size: 17px; font-weight: 600; letter-spacing: 0; }
+    main { max-width: 1440px; margin: 0 auto; padding: 20px 24px 32px; }
+    .toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
+    h2 { margin: 0; font-size: 15px; font-weight: 600; letter-spacing: 0; }
+    button, .button { min-height: 34px; padding: 0 13px; border: 1px solid #9aa6b2; border-radius: 4px; background: #fff; color: #17202a; cursor: pointer; font: inherit; font-weight: 600; }
+    .button { display: inline-flex; align-items: center; text-decoration: none; }
+    button:hover, .button:hover { background: #eaf0f5; }
+    button:disabled { cursor: wait; opacity: .55; }
+    .actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+    .copy-button { min-width: 108px; }
+    .reset-button { width: 128px; border-color: #c86b63; color: #9f241b; }
+    .reset-button:hover { background: #fff0ee; }
+    table { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid #d8dee4; }
+    th, td { padding: 10px 12px; border-bottom: 1px solid #e5e9ed; text-align: left; font-size: 13px; }
+    th { background: #eef2f5; font-weight: 600; }
+    .ok { color: #08783e; font-weight: 600; }
+    .bad { color: #b42318; font-weight: 600; }
+    @media (max-width: 700px) {
+      main { padding: 14px 10px 24px; }
+      header { padding: 0 12px; }
+      table, tbody, tr, td { display: block; }
+      table { border: 0; }
+      thead { display: none; }
+      tr { border: 1px solid #d8dee4; background: #fff; }
+      td { display: grid; grid-template-columns: 88px minmax(0, 1fr); align-items: center; gap: 10px; padding: 9px 10px; font-size: 12px; overflow-wrap: anywhere; }
+      td::before { content: attr(data-label); color: #52606d; font-weight: 600; }
+    }
+  </style>
+</head>
+<body>
+  <header><h1>Private Subscription</h1></header>
+  <main>
+    <section>
+      <div class="toolbar"><h2>Providers</h2><button id="reload">Reload</button></div>
+      <table>
+        <thead><tr><th>Provider</th><th>Status</th><th>Updated</th><th>Nodes</th><th>Action</th></tr></thead>
+        <tbody id="providers"></tbody>
+      </table>
+    </section>
+  </main>
+  <script>
+    const body = document.querySelector('#providers');
+    const names = { flybird: 'FlyBird', leapvpn: 'LeapVPN' };
+    const safe = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
+    async function load() {
+      const response = await fetch('/admin/api/status', { cache: 'no-store' });
+      const data = await response.json();
+      body.innerHTML = Object.entries(data.providers).map(([key, value]) => {
+        const status = value.available && !value.lastError ? '<span class="ok">Ready</span>' : `<span class="bad">${safe(value.lastError || 'Unavailable')}</span>`;
+        return `<tr><td data-label="Provider">${names[key]}</td><td data-label="Status">${status}</td><td data-label="Updated">${safe(value.updatedAt || '-')}</td><td data-label="Nodes">${safe(value.proxyCount || 0)}</td><td data-label="Action"><div class="actions"><button class="copy-button" data-copy-link="${key}">Copy link</button><button class="reset-button" data-reset-link="${key}">Reset link</button><a class="button" href="/admin/download/${key}.yaml">Download</a><button data-provider="${key}">Refresh</button></div></td></tr>`;
+      }).join('');
+    }
+    async function copyText(value) {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(value);
+        return;
+      }
+      const input = document.createElement('textarea');
+      input.value = value;
+      input.style.position = 'fixed';
+      input.style.opacity = '0';
+      document.body.append(input);
+      input.select();
+      const copied = document.execCommand('copy');
+      input.remove();
+      if (!copied) throw new Error('Clipboard is unavailable');
+    }
+    body.addEventListener('click', async (event) => {
+      const resetButton = event.target.closest('button[data-reset-link]');
+      if (resetButton) {
+        const provider = resetButton.dataset.resetLink;
+        if (!window.confirm(`Reset the ${names[provider]} subscription link? Its current link will stop working immediately.`)) return;
+        resetButton.disabled = true;
+        try {
+          const response = await fetch(`/admin/api/reset-subscription-url?provider=${encodeURIComponent(provider)}`, {
+            method: 'POST',
+            headers: { 'X-Admin-Action': 'private-subscription-admin' },
+          });
+          if (!response.ok) throw new Error('Subscription URL could not be reset');
+          const data = await response.json();
+          try {
+            await copyText(data.url);
+            resetButton.textContent = 'Reset & copied';
+          } catch {
+            resetButton.textContent = 'Link reset';
+          }
+        } catch {
+          resetButton.textContent = 'Reset failed';
+        } finally {
+          setTimeout(() => {
+            resetButton.textContent = 'Reset link';
+            resetButton.disabled = false;
+          }, 1800);
+        }
+        return;
+      }
+      const copyButton = event.target.closest('button[data-copy-link]');
+      if (copyButton) {
+        const provider = copyButton.dataset.copyLink;
+        copyButton.disabled = true;
+        try {
+          const response = await fetch(`/admin/api/subscription-url?provider=${encodeURIComponent(provider)}`, { cache: 'no-store' });
+          if (!response.ok) throw new Error('Subscription URL is unavailable');
+          const data = await response.json();
+          await copyText(data.url);
+          copyButton.textContent = 'Copied';
+        } catch {
+          copyButton.textContent = 'Copy failed';
+        } finally {
+          setTimeout(() => {
+            copyButton.textContent = 'Copy link';
+            copyButton.disabled = false;
+          }, 1600);
+        }
+        return;
+      }
+      const button = event.target.closest('button[data-provider]');
+      if (!button) return;
+      button.disabled = true;
+      await fetch(`/admin/api/refresh/${button.dataset.provider}`, {
+        method: 'POST',
+        headers: { 'X-Admin-Action': 'private-subscription-admin' },
+      });
+      setTimeout(load, 1200);
+    });
+    document.querySelector('#reload').addEventListener('click', load);
+    load();
+    setInterval(load, 10000);
+  </script>
+</body>
+</html>

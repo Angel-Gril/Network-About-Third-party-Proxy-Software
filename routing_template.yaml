@@ -1,0 +1,443 @@
+﻿# Dynamic routing template for Mihomo.
+# Rules are maintained by MetaCubeX/meta-rules-dat and refreshed every 24 hours.
+# __ALL_NODES__ is expanded with the current FlyingBird nodes during export.
+dns:
+  enable: true
+  cache-algorithm: arc
+  ipv6: false
+  default-nameserver:
+  - 223.5.5.5
+  - 223.6.6.6
+  proxy-server-nameserver:
+  - https://doh.pub/dns-query
+  - https://dns.alidns.com/dns-query
+  enhanced-mode: fake-ip
+  fake-ip-range: 198.18.0.1/16
+  fake-ip-filter:
+  - '*.lan'
+  - '*.local'
+  - '*.localhost'
+  - '*.home.arpa'
+  - time.*.com
+  - ntp.*.com
+  - +.pool.ntp.org
+  - stun.*.*
+  - stun.*.*.*
+  - localhost.ptlogin2.qq.com
+  - +.msftconnecttest.com
+  - +.msftncsi.com
+  - xbox.*.*.microsoft.com
+  - '*.*.xboxlive.com'
+  use-hosts: true
+  nameserver:
+  - https://doh.pub/dns-query
+  - https://dns.alidns.com/dns-query
+  - tls://dns.alidns.com:853
+  fallback:
+  - 'https://1.1.1.1/dns-query#♻️ 自动选择'
+  - 'https://8.8.8.8/dns-query#♻️ 自动选择'
+  fallback-filter:
+    geoip: true
+    geoip-code: CN
+    ipcidr:
+    - 240.0.0.0/4
+    - 0.0.0.0/32
+    domain:
+    - +.github.com
+    - +.githubusercontent.com
+    - +.google.com
+    - +.youtube.com
+    - +.netflix.com
+    - +.openai.com
+    - +.telegram.org
+sniffer:
+  enable: true
+  force-dns-mapping: true
+  parse-pure-ip: true
+  override-destination: true
+  sniff:
+    HTTP:
+      ports: [80, 8080-8880]
+      override-destination: true
+    TLS:
+      ports: [443, 8443]
+    QUIC:
+      ports: [443, 8443]
+  skip-domain:
+  - Mijia Cloud
+proxy-groups:
+- name: 🔰 节点选择
+  type: select
+  proxies:
+  - ♻️ 自动选择
+  - 🎯 全球直连
+  - __ALL_NODES__
+- name: ♻️ 自动选择
+  type: url-test
+  url: https://www.gstatic.com/generate_204
+  interval: 300
+  tolerance: 50
+  proxies:
+  - __ALL_NODES__
+- name: 🌍 国外媒体
+  type: select
+  proxies:
+  - 🔰 节点选择
+  - ♻️ 自动选择
+  - 🎯 全球直连
+  - __ALL_NODES__
+- name: 🌏 国内媒体
+  type: select
+  proxies:
+  - 🎯 全球直连
+  - 🔰 节点选择
+  - __ALL_NODES__
+- name: Ⓜ️ 微软服务
+  type: select
+  proxies:
+  - 🎯 全球直连
+  - 🔰 节点选择
+  - __ALL_NODES__
+- name: 📲 电报信息
+  type: select
+  proxies:
+  - 🔰 节点选择
+  - ♻️ 自动选择
+  - 🎯 全球直连
+  - __ALL_NODES__
+- name: 🍎 苹果服务
+  type: select
+  proxies:
+  - 🎯 全球直连
+  - 🔰 节点选择
+  - ♻️ 自动选择
+  - __ALL_NODES__
+- name: 🤖 AI 服务
+  type: select
+  proxies:
+  - 🔰 节点选择
+  - ♻️ 自动选择
+  - __ALL_NODES__
+- name: 💻 开发服务
+  type: select
+  proxies:
+  - 🔰 节点选择
+  - ♻️ 自动选择
+  - 🎯 全球直连
+  - __ALL_NODES__
+- name: 🌐 Google 服务
+  type: select
+  proxies:
+  - 🔰 节点选择
+  - ♻️ 自动选择
+  - __ALL_NODES__
+- name: 🎮 游戏平台
+  type: select
+  proxies:
+  - 🔰 节点选择
+  - ♻️ 自动选择
+  - 🎯 全球直连
+  - __ALL_NODES__
+- name: 💳 支付服务
+  type: select
+  proxies:
+  - 🔰 节点选择
+  - ♻️ 自动选择
+  - 🎯 全球直连
+  - __ALL_NODES__
+- name: ⬇️ 大文件下载
+  type: select
+  proxies:
+  - 🎯 全球直连
+  - 🔰 节点选择
+  - ♻️ 自动选择
+- name: 🎯 全球直连
+  type: select
+  proxies:
+  - DIRECT
+  - __ALL_NODES__
+- name: 🛑 全球拦截
+  type: select
+  proxies:
+  - REJECT
+  - DIRECT
+- name: 🐟 漏网之鱼
+  type: select
+  proxies:
+  - 🔰 节点选择
+  - ♻️ 自动选择
+  - 🎯 全球直连
+  - __ALL_NODES__
+rule-providers:
+  private-domain:
+    type: http
+    behavior: domain
+    format: mrs
+    url: https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/private.mrs
+    path: ./ruleset/geosite-private.mrs
+    interval: 86400
+    proxy: ♻️ 自动选择
+  reject-domain:
+    type: http
+    behavior: domain
+    format: mrs
+    url: https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/category-ads-all.mrs
+    path: ./ruleset/category-ads-all.mrs
+    interval: 86400
+    proxy: ♻️ 自动选择
+  github-domain:
+    type: http
+    behavior: domain
+    format: mrs
+    url: https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/github.mrs
+    path: ./ruleset/geosite-github.mrs
+    interval: 86400
+    proxy: ♻️ 自动选择
+  ai-non-cn:
+    type: http
+    behavior: domain
+    format: mrs
+    url: https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/category-ai-!cn.mrs
+    path: ./ruleset/category-ai-!cn.mrs
+    interval: 86400
+    proxy: ♻️ 自动选择
+  google-domain:
+    type: http
+    behavior: domain
+    format: mrs
+    url: https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/google.mrs
+    path: ./ruleset/geosite-google.mrs
+    interval: 86400
+    proxy: ♻️ 自动选择
+  google-ip:
+    type: http
+    behavior: ipcidr
+    format: mrs
+    url: https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geoip/google.mrs
+    path: ./ruleset/geoip-google.mrs
+    interval: 86400
+    proxy: ♻️ 自动选择
+  youtube-domain:
+    type: http
+    behavior: domain
+    format: mrs
+    url: https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/youtube.mrs
+    path: ./ruleset/geosite-youtube.mrs
+    interval: 86400
+    proxy: ♻️ 自动选择
+  netflix-domain:
+    type: http
+    behavior: domain
+    format: mrs
+    url: https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/netflix.mrs
+    path: ./ruleset/geosite-netflix.mrs
+    interval: 86400
+    proxy: ♻️ 自动选择
+  netflix-ip:
+    type: http
+    behavior: ipcidr
+    format: mrs
+    url: https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geoip/netflix.mrs
+    path: ./ruleset/geoip-netflix.mrs
+    interval: 86400
+    proxy: ♻️ 自动选择
+  disney-domain:
+    type: http
+    behavior: domain
+    format: mrs
+    url: https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/disney.mrs
+    path: ./ruleset/geosite-disney.mrs
+    interval: 86400
+    proxy: ♻️ 自动选择
+  hbo-domain:
+    type: http
+    behavior: domain
+    format: mrs
+    url: https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/hbo.mrs
+    path: ./ruleset/geosite-hbo.mrs
+    interval: 86400
+    proxy: ♻️ 自动选择
+  spotify-domain:
+    type: http
+    behavior: domain
+    format: mrs
+    url: https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/spotify.mrs
+    path: ./ruleset/geosite-spotify.mrs
+    interval: 86400
+    proxy: ♻️ 自动选择
+  bilibili-domain:
+    type: http
+    behavior: domain
+    format: mrs
+    url: https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/bilibili.mrs
+    path: ./ruleset/geosite-bilibili.mrs
+    interval: 86400
+    proxy: ♻️ 自动选择
+  bahamut-domain:
+    type: http
+    behavior: domain
+    format: mrs
+    url: https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/bahamut.mrs
+    path: ./ruleset/geosite-bahamut.mrs
+    interval: 86400
+    proxy: ♻️ 自动选择
+  paypal-domain:
+    type: http
+    behavior: domain
+    format: mrs
+    url: https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/paypal.mrs
+    path: ./ruleset/geosite-paypal.mrs
+    interval: 86400
+    proxy: ♻️ 自动选择
+  game-download-domain:
+    type: http
+    behavior: domain
+    format: mrs
+    url: https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/category-game-platforms-download.mrs
+    path: ./ruleset/geosite-game-platforms-download.mrs
+    interval: 86400
+    proxy: ♻️ 自动选择
+  games-non-cn-domain:
+    type: http
+    behavior: domain
+    format: mrs
+    url: https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/category-games-!cn.mrs
+    path: ./ruleset/geosite-games-non-cn.mrs
+    interval: 86400
+    proxy: ♻️ 自动选择
+  telegram-domain:
+    type: http
+    behavior: domain
+    format: mrs
+    url: https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/telegram.mrs
+    path: ./ruleset/geosite-telegram.mrs
+    interval: 86400
+    proxy: ♻️ 自动选择
+  microsoft-domain:
+    type: http
+    behavior: domain
+    format: mrs
+    url: https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/microsoft.mrs
+    path: ./ruleset/geosite-microsoft.mrs
+    interval: 86400
+    proxy: ♻️ 自动选择
+  apple-domain:
+    type: http
+    behavior: domain
+    format: mrs
+    url: https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/apple.mrs
+    path: ./ruleset/geosite-apple.mrs
+    interval: 86400
+    proxy: ♻️ 自动选择
+  media-cn:
+    type: http
+    behavior: domain
+    format: mrs
+    url: https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/category-entertainment-cn.mrs
+    path: ./ruleset/geosite-entertainment-cn.mrs
+    interval: 86400
+    proxy: ♻️ 自动选择
+  media-non-cn:
+    type: http
+    behavior: domain
+    format: mrs
+    url: https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/category-entertainment@!cn.mrs
+    path: ./ruleset/geosite-entertainment-non-cn.mrs
+    interval: 86400
+    proxy: ♻️ 自动选择
+  cn-domain:
+    type: http
+    behavior: domain
+    format: mrs
+    url: https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/cn.mrs
+    path: ./ruleset/geosite-cn.mrs
+    interval: 86400
+    proxy: ♻️ 自动选择
+  non-cn-domain:
+    type: http
+    behavior: domain
+    format: mrs
+    url: https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/geolocation-!cn.mrs
+    path: ./ruleset/geosite-geolocation-non-cn.mrs
+    interval: 86400
+    proxy: ♻️ 自动选择
+  private-ip:
+    type: http
+    behavior: ipcidr
+    format: mrs
+    url: https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geoip/private.mrs
+    path: ./ruleset/geoip-private.mrs
+    interval: 86400
+    proxy: ♻️ 自动选择
+  cn-ip:
+    type: http
+    behavior: ipcidr
+    format: mrs
+    url: https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geoip/cn.mrs
+    path: ./ruleset/geoip-cn.mrs
+    interval: 86400
+    proxy: ♻️ 自动选择
+  telegram-ip:
+    type: http
+    behavior: ipcidr
+    format: mrs
+    url: https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geoip/telegram.mrs
+    path: ./ruleset/geoip-telegram.mrs
+    interval: 86400
+    proxy: ♻️ 自动选择
+rules:
+- DOMAIN-SUFFIX,local,🎯 全球直连
+- IP-CIDR,127.0.0.0/8,🎯 全球直连,no-resolve
+- IP-CIDR,10.0.0.0/8,🎯 全球直连,no-resolve
+- IP-CIDR,172.16.0.0/12,🎯 全球直连,no-resolve
+- IP-CIDR,192.168.0.0/16,🎯 全球直连,no-resolve
+- IP-CIDR,100.64.0.0/10,🎯 全球直连,no-resolve
+- IP-CIDR6,::1/128,🎯 全球直连,no-resolve
+- IP-CIDR6,fc00::/7,🎯 全球直连,no-resolve
+- IP-CIDR6,fe80::/10,🎯 全球直连,no-resolve
+- PROCESS-NAME,aria2c,🎯 全球直连
+- PROCESS-NAME,fdm,🎯 全球直连
+- PROCESS-NAME,Folx,🎯 全球直连
+- PROCESS-NAME,NetTransport,🎯 全球直连
+- PROCESS-NAME,Thunder,🎯 全球直连
+- PROCESS-NAME,Transmission,🎯 全球直连
+- PROCESS-NAME,uTorrent,🎯 全球直连
+- PROCESS-NAME,WebTorrent,🎯 全球直连
+- PROCESS-NAME,WebTorrent Helper,🎯 全球直连
+- PROCESS-NAME,DownloadService,🎯 全球直连
+- PROCESS-NAME,Weiyun,🎯 全球直连
+- RULE-SET,private-domain,🎯 全球直连
+- RULE-SET,private-ip,🎯 全球直连,no-resolve
+- RULE-SET,reject-domain,🛑 全球拦截
+- DOMAIN-SUFFIX,githubcopilot.com,🤖 AI 服务
+- RULE-SET,ai-non-cn,🤖 AI 服务
+- DOMAIN,github.global.ssl.fastly.net,💻 开发服务
+- DOMAIN-SUFFIX,github.blog,💻 开发服务
+- DOMAIN-SUFFIX,github.com,💻 开发服务
+- DOMAIN-SUFFIX,github.io,💻 开发服务
+- DOMAIN-SUFFIX,githubassets.com,💻 开发服务
+- DOMAIN-SUFFIX,githubusercontent.com,💻 开发服务
+- RULE-SET,github-domain,💻 开发服务
+- RULE-SET,google-domain,🌐 Google 服务
+- RULE-SET,google-ip,🌐 Google 服务,no-resolve
+- RULE-SET,youtube-domain,🌍 国外媒体
+- RULE-SET,netflix-domain,🌍 国外媒体
+- RULE-SET,netflix-ip,🌍 国外媒体,no-resolve
+- RULE-SET,disney-domain,🌍 国外媒体
+- RULE-SET,hbo-domain,🌍 国外媒体
+- RULE-SET,spotify-domain,🌍 国外媒体
+- RULE-SET,bahamut-domain,🌍 国外媒体
+- RULE-SET,bilibili-domain,🌏 国内媒体
+- RULE-SET,game-download-domain,⬇️ 大文件下载
+- RULE-SET,games-non-cn-domain,🎮 游戏平台
+- RULE-SET,paypal-domain,💳 支付服务
+- RULE-SET,telegram-domain,📲 电报信息
+- RULE-SET,telegram-ip,📲 电报信息,no-resolve
+- RULE-SET,microsoft-domain,Ⓜ️ 微软服务
+- RULE-SET,apple-domain,🍎 苹果服务
+- RULE-SET,media-cn,🌏 国内媒体
+- RULE-SET,media-non-cn,🌍 国外媒体
+- RULE-SET,cn-domain,🎯 全球直连
+- RULE-SET,cn-ip,🎯 全球直连,no-resolve
+- RULE-SET,non-cn-domain,🔰 节点选择
+- MATCH,🐟 漏网之鱼

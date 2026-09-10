@@ -1,0 +1,2 @@
+-r leapvpn/requirements.txt
+PyYAML>=6.0.2,<7

@@ -1,0 +1,5 @@
+# Generate distinct random values before using the optional Worker.
+LINK_SECRET=""
+ACCESS_KEY=""
+ENABLE_PROFILE_CRON="false"
+ENABLE_RULES_CRON="false"

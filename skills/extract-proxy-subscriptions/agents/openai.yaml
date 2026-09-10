@@ -1,0 +1,4 @@
+interface:
+  display_name: "代理软件订阅提取"
+  short_description: "定位代理客户端配置、还原认证与解密链路，并验证订阅实际转发"
+  default_prompt: "使用 $extract-proxy-subscriptions 分析我有权使用的代理客户端，定位订阅来源并验证导出结果。"

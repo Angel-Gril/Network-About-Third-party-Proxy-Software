@@ -1,0 +1,28 @@
+[Unit]
+Description=Private subscription HTTP service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=subsvc
+Group=subsvc
+WorkingDirectory=/opt/private-subscription/app
+EnvironmentFile=/etc/private-subscription/service.env
+ExecStart=/usr/local/bin/node /opt/private-subscription/app/src/server.mjs
+Restart=on-failure
+RestartSec=5s
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+ReadWritePaths=/var/lib/private-subscription/cache /var/lib/private-subscription/read-tokens /var/lib/private-subscription/state/leapvpn
+
+[Install]
+WantedBy=multi-user.target

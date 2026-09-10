@@ -1,0 +1,11 @@
+[Unit]
+Description=Refresh LeapVPN private subscription every six hours
+
+[Timer]
+OnCalendar=*-*-* 04,10,16,22:15:00
+RandomizedDelaySec=10m
+Persistent=true
+Unit=private-subscription-refresh@leapvpn.service
+
+[Install]
+WantedBy=timers.target

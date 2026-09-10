@@ -1,0 +1,13 @@
+{
+  "name": "proxy-subscription-toolkit",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "test": "node --test test/worker.test.mjs",
+    "test:vps": "npm --prefix vps-service test",
+    "check": "node --check src/worker.js && npm --prefix vps-service run check",
+    "skill:pack": "python scripts/package_skill.py --out-dir dist"
+  }
+}

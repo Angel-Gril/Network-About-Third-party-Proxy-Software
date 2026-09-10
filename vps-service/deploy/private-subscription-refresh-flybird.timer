@@ -1,0 +1,11 @@
+[Unit]
+Description=Refresh FlyBird private subscription every six hours
+
+[Timer]
+OnCalendar=*-*-* 03,09,15,21:15:00
+RandomizedDelaySec=15m
+Persistent=true
+Unit=private-subscription-refresh@flybird.service
+
+[Install]
+WantedBy=timers.target
