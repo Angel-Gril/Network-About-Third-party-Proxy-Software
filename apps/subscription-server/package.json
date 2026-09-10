@@ -1,0 +1,17 @@
+{
+  "name": "@proxy-toolkit/subscription-server",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "check": "node --check src/app.mjs && node --check src/server.mjs && node --check src/refresh-provider.mjs && node --check src/rules.mjs && node --check src/providers.mjs && node --check src/validate-subscription.mjs && node --check src/routing-template.mjs",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@proxy-toolkit/flybird": "1.0.0",
+    "yaml": "^2.8.1"
+  }
+}

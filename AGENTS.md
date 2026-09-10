@@ -1,16 +1,18 @@
 # 项目开发约定
 
-先读 `README.md` 和 `docs/DEVELOPMENT.md`，再定位当前任务的实现和相邻测试。这里是公开源码仓库，具体账号、订阅、服务器和现场记录不属于仓库内容。
+先读 `README.md`、`docs/ARCHITECTURE.md` 和 `docs/DEVELOPMENT.md`，再定位当前任务的实现和相邻测试。这里是公开源码仓库，具体账号、订阅、服务器和现场记录不属于仓库内容。
 
 ## 代码归属
 
-- 飞鸟本地导出：根目录 PowerShell 脚本；Python 文件只负责启动。
-- 飞鸟 Worker 与公共分流生成：`src/worker.js`。
-- 飞跃协议转换：`leapvpn/export_leapvpn.py`；认证与续期在 `auth_leapvpn.py`，刷新入口在 `refresh_leapvpn.py`。
-- VPS 分发、缓存和访问控制：`vps-service/`。
+- 飞鸟实现：`providers/flybird/src/`；Node 模块由 `@proxy-toolkit/flybird` 导出，Python 文件只启动本地 PowerShell 导出器。
+- 飞跃实现：`providers/leapvpn/src/leapvpn/`；运行依赖只在提供者 `pyproject.toml` 中维护。
+- Worker 部署入口：`apps/cloudflare-worker/`。
+- VPS 分发、缓存和访问控制：`apps/subscription-server/`。
 - 可复用方法：`skills/extract-proxy-subscriptions/`；客户端差异放在其 references 中。
 
 优先复用这些实现。不要为 VPS 或 skill 再复制一套提取、解密或认证算法。
+
+提供者和应用的测试放在各自 `tests/`；根 `tests/` 只放仓库工具测试。根目录不增加提供者专用脚本或部署配置。路径变化同步入口、包配置、文档和 CI，迁移期间不保留重复源码副本。
 
 ## 改动和验证
 

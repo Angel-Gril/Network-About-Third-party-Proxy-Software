@@ -1,0 +1,14 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "proxy-toolkit-leapvpn"
+version = "1.0.0"
+description = "LeapVPN client configuration export and device-session renewal"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = ["pycryptodome>=3.20,<4", "requests>=2.31,<3"]
+
+[tool.setuptools.packages.find]
+where = ["src"]

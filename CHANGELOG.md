@@ -1,5 +1,16 @@
 # 变更记录
 
+## 未发布
+
+- 将飞鸟和飞跃平级归入 `providers/`，把 Worker 与 VPS 服务归入 `apps/`，源码、测试、模板和部署文件各自归属模块。
+- 使用 npm workspaces 与根目录唯一锁文件；Worker 和 VPS 导入同一个飞鸟包，移除按另一个应用文件路径导入的依赖。
+- 将飞跃整理为可安装的 Python src 包，提供 `python -m leapvpn.export/refresh/sync` 入口；飞鸟默认输出改为仓库 `exports/flybird/`。
+- 修复 PowerShell 切换当前目录后，相对导出路径和缓存上传路径可能指向进程启动目录的问题。
+- 修复 Windows PowerShell 5.1 缓存上传时序列化文件元数据导致停顿的问题，并覆盖无 BOM UTF-8 中文节点名。
+- 增加跨目录入口、真实分流函数与两种 Python 调用模式的回归，统一开发验证与构建入口，恢复标准 Windows/Linux CI checkout。
+- 补全两家使用说明、架构、迁移与贡献文档，同步 skill 路径，增加 Markdown 链接检查及编辑器格式约定。
+- 此次调整包含脚本和部署路径变化；升级方式见 [迁移说明](docs/MIGRATION.md)，现有 VPS 不会自动迁移。
+
 ## 1.0.0 — 2026-09-10
 
 - 整理 FlyingBird 本地导出、可选 Worker、LeapVPN 协议 X 提取与自动续期，以及 VPS 缓存分发源码。

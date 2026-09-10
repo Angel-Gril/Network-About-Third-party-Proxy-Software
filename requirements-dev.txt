@@ -1,2 +1,2 @@
--r leapvpn/requirements.txt
+-e ./providers/leapvpn
 PyYAML>=6.0.2,<7

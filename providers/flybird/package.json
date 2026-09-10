@@ -1,0 +1,12 @@
+{
+  "name": "@proxy-toolkit/flybird",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "exports": "./src/subscription.js",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "test": "node --test tests/subscription.test.mjs",
+    "check": "node --check src/subscription.js"
+  }
+}

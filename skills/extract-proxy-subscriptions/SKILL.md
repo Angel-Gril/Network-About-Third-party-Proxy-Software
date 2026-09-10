@@ -52,4 +52,4 @@ description: "分析用户有权使用的代理或 VPN 客户端，定位订阅�
 
 说明实际验证了哪些节点、网络条件和目标。选择一个出口证明规则生效，不能表述为全部线路稳定可用。不把未运行的 GUI 导入、协议兼容性、长期续期或完整出口测速写成已完成。
 
-在包含本项目代码的工作区，可复用根目录飞鸟导出脚本、`leapvpn/` 和 `vps-service/`。离开本项目时先定位当前实现；本 skill 不依赖某个开发者的目录、域名、密钥或在线服务器。
+在包含本项目代码的工作区，可复用 `providers/flybird/`、`providers/leapvpn/` 和 `apps/subscription-server/`；Worker 入口位于 `apps/cloudflare-worker/`。飞跃安装后通过 `python -m leapvpn.export` 等模块入口调用。离开本项目时先定位当前实现；本 skill 不依赖某个开发者的目录、域名、密钥或在线服务器。

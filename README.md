@@ -1,81 +1,90 @@
-# 第三方代理软件订阅提取
+# 第三方代理软件订阅工具
 
-把自己账号或客户端中的代理配置转换为标准订阅，并验证参数、入口和实际转发。包含 FlyingBird（飞鸟云）、LeapVPN（飞跃）的实现，以及可迁移到同类客户端的分析 skill。
+[![Validate and package](https://github.com/Angel-Gril/Network-About-Third-party-Proxy-Software/actions/workflows/ci.yml/badge.svg)](https://github.com/Angel-Gril/Network-About-Third-party-Proxy-Software/actions/workflows/ci.yml)
 
-| 内容 | 位置 |
-| --- | --- |
-| 飞鸟本地登录、解密、导出 | [export_fb_all.ps1](export_fb_all.ps1) |
-| 可选 Cloudflare Worker | [src/worker.js](src/worker.js)、[使用说明](docs/WORKER.md) |
-| 飞跃提取、自动登录与续期 | [leapvpn/](leapvpn/README.md) |
-| 私有 VPS 分发、分流与缓存 | [vps-service/](vps-service/README.md) |
-| 可复用提取方法 skill | [extract-proxy-subscriptions](skills/extract-proxy-subscriptions/SKILL.md) |
-| 开发、测试和公开提交规则 | [AGENTS.md](AGENTS.md)、[开发说明](docs/DEVELOPMENT.md) |
+从自己有权使用的账号或客户端配置中提取代理参数，转换为标准订阅，并提供可选的缓存分发服务。包含 FlyingBird（飞鸟云）、LeapVPN（飞跃）两家实现，以及可迁移到同类客户端的分析 skill。
 
-运行时使用你自己的有效账号或已授权客户端会话。导出文件包含连接凭据，默认输出目录已加入 Git 忽略规则。
+## 支持情况
 
-## 飞鸟：本机导出
+| 提供者 | 已实现 | 运行入口 |
+| --- | --- | --- |
+| [FlyingBird / 飞鸟云](providers/flybird/README.md) | 账号登录、完整订阅解密、Mihomo 分流、v2rayN 导出；可选 Worker 和 VPS 分发 | PowerShell 本地导出、JavaScript 共享包 |
+| [LeapVPN / 飞跃](providers/leapvpn/README.md) | 协议 X 的逐线路提取、Clash/Xray/VLESS 导出、设备身份持久化与会话续期 | 可安装的 Python 包 |
 
-Windows 上使用 PowerShell 7 或 Windows PowerShell 5.1：
+飞跃实现基于已分析的 1.5.8 Windows 客户端；协议 X 为 VLESS + WebSocket + TLS，协议 W 的第三方核心兼容性尚未验证。软件升级或上游变化后，需要重新确认适用范围。
+
+## 项目结构
+
+```text
+providers/                   提供者实现
+  flybird/                   源码、测试、本地导出模板
+  leapvpn/                   Python 包与测试
+apps/                        可部署应用
+  cloudflare-worker/         Worker 入口与 Wrangler 配置
+  subscription-server/       VPS 服务、管理页、Nginx/systemd 模板
+skills/
+  extract-proxy-subscriptions/
+scripts/                     仓库检查、测试调度、skill 打包
+tests/                       仓库工具测试
+docs/                        架构、开发与迁移说明
+```
+
+两家实现平级放在 `providers/`；应用复用提供者代码。JavaScript 使用 npm workspaces，依赖由根目录唯一的 lockfile 管理。详见 [架构说明](docs/ARCHITECTURE.md)；旧版本用户先看 [迁移说明](docs/MIGRATION.md)。
+
+## 快速开始
+
+以下命令从仓库根目录执行。普通提取无需部署 Worker 或 VPS。
+
+### 飞鸟：Windows 本地导出
+
+需要 Windows PowerShell 5.1 或 PowerShell 7；无需先安装 npm 依赖。
 
 ```powershell
-.\run_export_fb_all.bat
+.\providers\flybird\export.bat
 
-# 指定邮箱，密码由交互提示安全输入。
-pwsh -NoProfile -File .\export_fb_all.ps1 -Email 'you@example.com'
+# 指定邮箱，密码由交互提示输入。
+pwsh -NoProfile -File .\providers\flybird\src\export.ps1 -Email 'you@example.com'
 ```
 
-导出器从客户端首选项发现当前 API 地址，也可用 `-ApiBaseUrl` 明确覆盖。输出放在 `fb_export/`，包含 Mihomo/Clash 配置和 v2rayN 可导入内容。它登录官方账号接口并解密订阅，使用 [routing_template.yaml](routing_template.yaml) 生成本地分流。
+默认写入仓库 `exports/flybird/`，包含 Mihomo YAML、节点 YAML、分享链接、Base64 订阅和摘要。指定 `-OutDir` 时，相对路径以调用目录为准。API 地址发现、自定义模板和 Python 启动器见 [飞鸟说明](providers/flybird/README.md)。
 
-当下载或解密成功但节点超时时，继续检查真实 DNS 与连接层；Fake-IP 地址不能作为真实入口有效的证据。
+### 飞跃：安装后导出
 
-## 飞跃：检查或批量导出
+在 Python 3.10+ 的虚拟环境中执行：
 
 ```sh
-python -m pip install -r leapvpn/requirements.txt
-python -B leapvpn/export_leapvpn.py
-python -B leapvpn/export_leapvpn.py --fetch-all --out-dir exports/leap-first
+python -m pip install ./providers/leapvpn
+python -m leapvpn.export
+python -m leapvpn.export --fetch-all --out-dir exports/leap-first
 ```
 
-默认从已登录 Windows 客户端读取配置。使用配置副本或其他平台时，通过 `--settings` 指定文件。输出目录必须尚不存在。
+默认读取已登录 Windows 客户端的配置；其他平台或配置副本使用 `--settings` 指定文件。在线模式会请求当前线路参数，输出目录必须尚不存在。自动续期和同步用法见 [飞跃说明](providers/leapvpn/README.md)。
 
-当前导出的是协议 X，即 VLESS + WebSocket + TLS，提供 Clash YAML、Xray JSON 和 VLESS 分享链接。协议 W 含自定义 WireGuard 扩展，第三方核心兼容性需要另行验证。具体用法、自动续期和状态边界见 [飞跃说明](leapvpn/README.md)。
+### 可选分发服务
+
+- [Cloudflare Worker](apps/cloudflare-worker/README.md)：加密链接、KV 缓存与规则资源代理。
+- [私有订阅服务器](apps/subscription-server/README.md)：两家独立读取 token、定时刷新、最后有效缓存和管理入口。
+
+导出文件与完整订阅链接包含连接凭据，应保存在本地私有目录。仓库提供示例域名和配置，不包含可直接使用的账号或订阅。
 
 ## 安装 skill
 
-skill 的唯一源码为 `skills/extract-proxy-subscriptions/`。复制整个目录到你的 Agent 技能目录，例如 Codex 的 `~/.codex/skills/`，再以 `$extract-proxy-subscriptions` 调用。也可以在仓库中直接指定该 `SKILL.md`。
+唯一源码为 [skills/extract-proxy-subscriptions](skills/extract-proxy-subscriptions/SKILL.md)。复制整个目录到 Agent 技能目录，例如 Codex 的 `~/.codex/skills/`，或直接指定仓库中的 `SKILL.md`。
 
-示例请求：
+> 使用 $extract-proxy-subscriptions 分析这个客户端的订阅来源，确认协议、身份和加密格式，导出并验证实际转发。
 
-> 使用 $extract-proxy-subscriptions 分析这个客户端的订阅来源，先确认协议、身份和加密格式，再导出并验证实际转发。
-
-本地打包：
-
-```sh
-python -m pip install -r requirements-dev.txt
-python scripts/check_skill.py
-python scripts/package_skill.py --out-dir dist
-```
-
-CI 会生成同一份安装 ZIP。skill 包只包含入口、UI 元数据和参考资料；其中记录了完整订阅与逐线路接口的差异、账号与设备身份、Fake-IP 排错、原子续期、分流验证和公开发布边界。
+skill 总结完整订阅与逐线路接口、认证状态、Fake-IP 排错、原子续期、分流验收和发布边界，不复制提取算法。CI 提供安装 ZIP；本地可在开发环境中运行 `npm run skill:pack`。
 
 ## 开发与验证
 
+按 [开发说明](docs/DEVELOPMENT.md) 创建并激活 Python 虚拟环境后：
+
 ```sh
-npm ci
-npm ci --prefix vps-service
+npm ci --ignore-scripts
 python -m pip install -r requirements-dev.txt
-npm test
-npm run test:vps
-npm run check
-python -B -m unittest discover -s leapvpn -p 'test_*.py'
-python -B -m unittest discover -s tests -p 'test_*.py'
-python scripts/check_public_files.py
+npm run verify
 ```
 
-这些测试使用合成数据，不登录真实账号。真实出口与规则命中需要独立核心验收，详见 [开发说明](docs/DEVELOPMENT.md) 和 skill 的 [验证与维护](skills/extract-proxy-subscriptions/references/validation-and-maintenance.md)。
+统一检查覆盖 Node/Python 回归、文档链接、公开内容、skill，以及 Worker 和 Python wheel 打包。CI 在 Windows、Linux 上执行，Linux 另检查 Nginx。测试使用合成数据；真实出口和规则命中需要 [独立验收](skills/extract-proxy-subscriptions/references/validation-and-maintenance.md)。
 
-## 公开版本与部署
-
-这里提供可移植的源码、示例配置和测试。部署地址使用 `sub.example.com`，自定义内网规则使用 `intranet.example`、`office.example`；部署前替换为自己的设置。普通提取不要求部署 Worker 或 VPS。
-
-VPS 服务复用原有提取器，按 provider 使用独立读取 token，并在验证失败时保留上次有效缓存。初始化和后续升级分开；已有服务不能重跑初始化来更新代码。完整目录布局、权限和启动前检查见 [VPS 说明](vps-service/README.md)。
+参与修改请读 [贡献说明](CONTRIBUTING.md)、[开发约定](AGENTS.md) 和 [变更记录](CHANGELOG.md)。

@@ -1,0 +1,16 @@
+{
+  "name": "@proxy-toolkit/cloudflare-worker",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22" },
+  "dependencies": { "@proxy-toolkit/flybird": "1.0.0" },
+  "devDependencies": { "wrangler": "4.130.0" },
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "build": "wrangler deploy --dry-run --outdir ../../dist/cloudflare-worker",
+    "test": "node --test tests/entry.test.mjs",
+    "check": "node --check src/index.js"
+  }
+}

@@ -6,7 +6,7 @@ import re
 import subprocess
 from urllib.parse import urlsplit
 
-PRIVATE_PARTS = {'exports', 'fb_export', 'private', '.local', '.vps-work', '.gstack',
+PRIVATE_PARTS = {'exports', 'fb_export', 'private', '.local', '.vps-work', '.gstack', '.wrangler',
                  'data', 'cache', 'state', 'sessions', 'backups', 'node_modules', '__pycache__'}
 PRIVATE_SUFFIXES = {'.pem', '.key', '.pfx', '.p12', '.dpapi', '.exe', '.dll', '.asar', '.zip', '.tgz', '.log', '.pyc'}
 PRIVATE_NAMES = {'account.json', 'credentials.json', 'session.json', 'tokens.json', 'appsettings.json'}

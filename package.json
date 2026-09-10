@@ -3,11 +3,18 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
+  "workspaces": ["providers/flybird", "apps/*"],
   "engines": { "node": ">=22" },
+  "overrides": {
+    "sharp": "0.35.4"
+  },
   "scripts": {
-    "test": "node --test test/worker.test.mjs",
-    "test:vps": "npm --prefix vps-service test",
-    "check": "node --check src/worker.js && npm --prefix vps-service run check",
+    "test": "npm run test --workspaces --if-present",
+    "test:python": "python -B scripts/test_python.py",
+    "check": "npm run check --workspaces --if-present && python scripts/check_public_files.py && python scripts/check_skill.py && python scripts/check_docs.py",
+    "build": "npm run build --workspaces --if-present && npm run build:python",
+    "build:python": "python -m pip wheel --no-deps ./providers/leapvpn --wheel-dir dist/python",
+    "verify": "npm test && npm run test:python && npm run check && npm run build",
     "skill:pack": "python scripts/package_skill.py --out-dir dist"
   }
 }

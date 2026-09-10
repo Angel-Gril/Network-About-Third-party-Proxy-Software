@@ -30,6 +30,8 @@ private/
 
 # Dependencies and build/runtime output
 node_modules/
+.wrangler/
+build/
 .venv/
 venv/
 __pycache__/

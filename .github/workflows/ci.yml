@@ -8,6 +8,10 @@ on:
 permissions:
   contents: read
 
+env:
+  WRANGLER_SEND_METRICS: 'false'
+  PYTHONUTF8: '1'
+
 jobs:
   validate:
     strategy:
@@ -19,73 +23,33 @@ jobs:
       run:
         shell: bash
     steps:
-      - name: Select the platform checkout directory
-        working-directory: ${{ runner.temp }}
-        run: |
-          if [[ "$RUNNER_OS" == "Windows" ]]; then
-            printf 'TOOLKIT_SOURCE=%s/proxy-toolkit\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
-          else
-            printf 'TOOLKIT_SOURCE=%s\n' "$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
-          fi
       - uses: actions/checkout@v4
-        if: runner.os != 'Windows'
-      - name: Check out the exact revision in a Windows-safe directory
-        if: runner.os == 'Windows'
-        shell: pwsh
-        working-directory: ${{ runner.temp }}
-        env:
-          CI_REPOSITORY_URL: https://github.com/${{ github.repository }}.git
-          CI_REVISION: ${{ github.sha }}
-          GIT_TERMINAL_PROMPT: '0'
-        run: |
-          if (Test-Path -LiteralPath $env:TOOLKIT_SOURCE) { throw 'CI checkout directory already exists' }
-          git init $env:TOOLKIT_SOURCE
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          git -C $env:TOOLKIT_SOURCE remote add origin $env:CI_REPOSITORY_URL
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          git -C $env:TOOLKIT_SOURCE fetch --depth=1 origin $env:CI_REVISION
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          git -C $env:TOOLKIT_SOURCE checkout --detach FETCH_HEAD
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+          cache: npm
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Install test dependencies
-        working-directory: ${{ env.TOOLKIT_SOURCE }}
+      - name: Install dependencies
         run: |
           npm ci --ignore-scripts
-          npm ci --prefix vps-service --ignore-scripts
           python -m pip install -r requirements-dev.txt
-      - name: Worker and VPS tests
-        working-directory: ${{ env.TOOLKIT_SOURCE }}
-        run: |
-          npm test
-          npm run test:vps
-          npm run check
-      - name: Python and publication tests
-        working-directory: ${{ env.TOOLKIT_SOURCE }}
-        run: |
-          python -B -m unittest discover -s leapvpn -p 'test_*.py'
-          python -B -m unittest discover -s tests -p 'test_*.py'
-      - name: Public contents and skill
-        working-directory: ${{ env.TOOLKIT_SOURCE }}
+      - name: Tests, source checks and build
+        run: npm run verify
+      - name: Public contents and dependency audit
         run: |
           python scripts/check_public_files.py --staged
-          python scripts/check_skill.py
+          npm audit --audit-level=high
           git diff --check
       - name: Nginx syntax and credential-URI logging
         if: runner.os == 'Linux'
-        working-directory: ${{ env.TOOLKIT_SOURCE }}
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y nginx
-          python scripts/check_nginx_templates.py
+          python apps/subscription-server/scripts/check_nginx.py
       - name: Parse PowerShell scripts
         if: runner.os == 'Windows'
-        working-directory: ${{ env.TOOLKIT_SOURCE }}
         shell: pwsh
         run: |
           $paths = git ls-files '*.ps1'
@@ -97,11 +61,10 @@ jobs:
           }
       - name: Package skill
         if: runner.os == 'Linux'
-        working-directory: ${{ env.TOOLKIT_SOURCE }}
         run: python scripts/package_skill.py --out-dir dist
       - uses: actions/upload-artifact@v4
         if: runner.os == 'Linux'
         with:
           name: extract-proxy-subscriptions
-          path: ${{ env.TOOLKIT_SOURCE }}/dist/extract-proxy-subscriptions.zip
+          path: dist/extract-proxy-subscriptions.zip
           if-no-files-found: error

@@ -16,7 +16,7 @@
 - Cloudflare Worker 上游被拒绝，不等于本地解密算法失败。可在已授权的本地环境导出，再交给只分发缓存的服务。
 - 订阅返回 200 且解密正确，仍可能把全部节点指向已失效的同一个入口域名。此时先查 DNS 和连接层。
 
-在本仓库中，算法由根目录 PowerShell 导出脚本与 `src/worker.js` 维护；Python 启动器不另写一套密码学实现。
+在本仓库中，算法由 `providers/flybird/src/export.ps1` 与 `providers/flybird/src/subscription.js` 维护；Python 启动器不另写一套密码学实现。Worker 和 VPS 通过 `@proxy-toolkit/flybird` 包复用 JavaScript 代码。
 
 ## LeapVPN 1.5.8：按线路取得连接参数
 
@@ -66,4 +66,4 @@
 
 当前 API 地址可能来自配置和官方 `lvfile.v2` 发现文件，后者使用带认证的 AES-GCM 包装。验证发现文件后再更新备用地址，不把一次响应中的 IP 固化为长期入口。
 
-在本仓库中，`leapvpn/export_leapvpn.py` 是转换实现，`auth_leapvpn.py` 管理身份与续期，`refresh_leapvpn.py` 负责无人值守调用。
+在本仓库中，`providers/leapvpn/src/leapvpn/export.py` 是转换实现，同包的 `auth.py` 管理身份与续期，`refresh.py` 负责无人值守调用。安装 `providers/leapvpn/` 后使用 `python -m leapvpn.export` 或 `python -m leapvpn.refresh`；应用调用同一包，不复制算法。
