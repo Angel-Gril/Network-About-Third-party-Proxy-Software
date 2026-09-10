@@ -50,17 +50,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: npm
-          cache-dependency-path: |
-            ${{ env.TOOLKIT_SOURCE }}/package-lock.json
-            ${{ env.TOOLKIT_SOURCE }}/vps-service/package-lock.json
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-          cache: pip
-          cache-dependency-path: |
-            ${{ env.TOOLKIT_SOURCE }}/requirements-dev.txt
-            ${{ env.TOOLKIT_SOURCE }}/leapvpn/requirements.txt
       - name: Install test dependencies
         working-directory: ${{ env.TOOLKIT_SOURCE }}
         run: |
