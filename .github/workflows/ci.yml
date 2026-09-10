@@ -15,12 +15,18 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
-    env:
-      TOOLKIT_SOURCE: ${{ runner.os == 'Windows' && format('{0}/proxy-toolkit', runner.temp) || github.workspace }}
     defaults:
       run:
         shell: bash
     steps:
+      - name: Select the platform checkout directory
+        working-directory: ${{ runner.temp }}
+        run: |
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            printf 'TOOLKIT_SOURCE=%s/proxy-toolkit\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
+          else
+            printf 'TOOLKIT_SOURCE=%s\n' "$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
+          fi
       - uses: actions/checkout@v4
         if: runner.os != 'Windows'
       - name: Check out the exact revision in a Windows-safe directory
