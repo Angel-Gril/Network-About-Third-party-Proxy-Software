@@ -15,52 +15,79 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
+    env:
+      TOOLKIT_SOURCE: ${{ runner.os == 'Windows' && format('{0}/proxy-toolkit', runner.temp) || github.workspace }}
     defaults:
       run:
         shell: bash
     steps:
       - uses: actions/checkout@v4
+        if: runner.os != 'Windows'
+      - name: Check out the exact revision in a Windows-safe directory
+        if: runner.os == 'Windows'
+        shell: pwsh
+        working-directory: ${{ runner.temp }}
+        env:
+          CI_REPOSITORY_URL: https://github.com/${{ github.repository }}.git
+          CI_REVISION: ${{ github.sha }}
+          GIT_TERMINAL_PROMPT: '0'
+        run: |
+          if (Test-Path -LiteralPath $env:TOOLKIT_SOURCE) { throw 'CI checkout directory already exists' }
+          git init $env:TOOLKIT_SOURCE
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          git -C $env:TOOLKIT_SOURCE remote add origin $env:CI_REPOSITORY_URL
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          git -C $env:TOOLKIT_SOURCE fetch --depth=1 origin $env:CI_REVISION
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          git -C $env:TOOLKIT_SOURCE checkout --detach FETCH_HEAD
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: npm
           cache-dependency-path: |
-            package-lock.json
-            vps-service/package-lock.json
+            ${{ env.TOOLKIT_SOURCE }}/package-lock.json
+            ${{ env.TOOLKIT_SOURCE }}/vps-service/package-lock.json
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
           cache: pip
           cache-dependency-path: |
-            requirements-dev.txt
-            leapvpn/requirements.txt
+            ${{ env.TOOLKIT_SOURCE }}/requirements-dev.txt
+            ${{ env.TOOLKIT_SOURCE }}/leapvpn/requirements.txt
       - name: Install test dependencies
+        working-directory: ${{ env.TOOLKIT_SOURCE }}
         run: |
           npm ci --ignore-scripts
           npm ci --prefix vps-service --ignore-scripts
           python -m pip install -r requirements-dev.txt
       - name: Worker and VPS tests
+        working-directory: ${{ env.TOOLKIT_SOURCE }}
         run: |
           npm test
           npm run test:vps
           npm run check
       - name: Python and publication tests
+        working-directory: ${{ env.TOOLKIT_SOURCE }}
         run: |
           python -B -m unittest discover -s leapvpn -p 'test_*.py'
           python -B -m unittest discover -s tests -p 'test_*.py'
       - name: Public contents and skill
+        working-directory: ${{ env.TOOLKIT_SOURCE }}
         run: |
           python scripts/check_public_files.py --staged
           python scripts/check_skill.py
           git diff --check
       - name: Nginx syntax and credential-URI logging
         if: runner.os == 'Linux'
+        working-directory: ${{ env.TOOLKIT_SOURCE }}
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y nginx
           python scripts/check_nginx_templates.py
       - name: Parse PowerShell scripts
         if: runner.os == 'Windows'
+        working-directory: ${{ env.TOOLKIT_SOURCE }}
         shell: pwsh
         run: |
           $paths = git ls-files '*.ps1'
@@ -72,10 +99,11 @@ jobs:
           }
       - name: Package skill
         if: runner.os == 'Linux'
+        working-directory: ${{ env.TOOLKIT_SOURCE }}
         run: python scripts/package_skill.py --out-dir dist
       - uses: actions/upload-artifact@v4
         if: runner.os == 'Linux'
         with:
           name: extract-proxy-subscriptions
-          path: dist/extract-proxy-subscriptions.zip
+          path: ${{ env.TOOLKIT_SOURCE }}/dist/extract-proxy-subscriptions.zip
           if-no-files-found: error
