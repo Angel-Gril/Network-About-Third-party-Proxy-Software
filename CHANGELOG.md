@@ -2,6 +2,9 @@
 
 ## 未发布
 
+- 新增订阅发布证据校验器，将候选、公网文件、源站快照与实际规则测试记录按哈希绑定，拒绝旧证据、失败用例和不完整覆盖。
+- 补充校验器的 CLI、证据格式和回归测试；严格拒绝 YAML 解析警告，避免私有源文本通过 stderr 泄露。
+
 - 将飞鸟和飞跃平级归入 `providers/`，把 Worker 与 VPS 服务归入 `apps/`，源码、测试、模板和部署文件各自归属模块。
 - 使用 npm workspaces 与根目录唯一锁文件；Worker 和 VPS 导入同一个飞鸟包，移除按另一个应用文件路径导入的依赖。
 - 将飞跃整理为可安装的 Python src 包，提供 `python -m leapvpn.export/refresh/sync` 入口；飞鸟默认输出改为仓库 `exports/flybird/`。

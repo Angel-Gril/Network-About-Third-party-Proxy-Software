@@ -41,6 +41,7 @@ npm audit --audit-level=high
 | 飞鸟 JavaScript | `npm test --workspace @proxy-toolkit/flybird` |
 | Worker 应用入口 | `npm test --workspace @proxy-toolkit/cloudflare-worker` |
 | 订阅服务 | `npm test --workspace @proxy-toolkit/subscription-server` |
+| 发布文件与证据校验 | `node --test apps/subscription-server/tests/release-verification.test.mjs` |
 | 飞鸟本地导出 | `python -B scripts/test_python.py --suite flybird` |
 | 飞跃 Python 包 | `python -B scripts/test_python.py --suite leapvpn` |
 | 服务部署工具 | `python -B scripts/test_python.py --suite server` |
@@ -67,6 +68,8 @@ JavaScript 的 workspace 清单各自维护包入口与依赖，根 `package-loc
 2. 用独立核心、临时端口验证协议握手、HTTP 转发和规则命中，避免第二个核心被现有 TUN 再次接管。
 3. 分别报告订阅下载、DNS、连接、转发和规则匹配；一个出口成功不能推导全部线路可用。
 4. 对已授权的部署，先备份和预发布，再检查正式缓存、原链接、拒绝路径及定时任务。
+
+使用 [订阅服务的验收工具](../apps/subscription-server/README.md#绑定配置与实际测试记录) 将候选、最终 HTTPS 响应、同期源站响应与真实规则测试记录绑定。它检查文件和证据的一致性；网络验证、服务状态与实际业务可用性仍分别记录。上游内容变化后使用新快照重新测试，保留原始失败记录。
 
 验收文件写到忽略的 `exports/`、`private/` 或明确的私有目录。公开提交仅保留脱敏结论。具体方法见 [验证与维护](../skills/extract-proxy-subscriptions/references/validation-and-maintenance.md)。
 

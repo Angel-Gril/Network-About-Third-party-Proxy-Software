@@ -68,6 +68,27 @@ FlyBird 入口恢复只在新入口无真实 DNS、旧入口仍有效且连接�
 
 至少检查健康接口、正确读取 token、错误及跨 provider token、未认证管理页面、原链接有效性和两个 timer。将最终 HTTPS 文件与已验证候选按哈希绑定。失败时恢复备份并重新验证；不静默重置 token 或设备。
 
+### 绑定配置与实际测试记录
+
+保存实际测试的候选、最终 HTTPS 响应、同期源站响应和独立核心的规则测试记录，然后从仓库根目录运行：
+
+```sh
+node apps/subscription-server/scripts/verify_release.mjs \
+  --candidate private/release/candidate.yaml \
+  --published private/release/published.yaml \
+  --origin private/release/origin.yaml \
+  --proof private/release/routing.json \
+  --require-complete-coverage
+```
+
+工具离线核对文件内容的 SHA-256，以及测试记录中的 `source_sha256`，并逐项验证节点/策略组/规则数量、测试节点、规则类型、payload、策略与请求结果。只有汇总成功标志不够；失败用例、重复用例、旧证据和覆盖不足都会被拒绝。退出码 0 表示输入证据通过，1 表示验证失败或输入文件无法读取，2 表示命令参数错误。输出只包含哈希、数量、布尔结果和错误代码。
+
+规则记录需来自真实核心测试，包含 `test_node`、`node_count`、`policy_groups`、`loaded_rules`、`rules_unchanged`、`nodes_unchanged`、`all_policies_matched`、`all_required_requests_passed`、`coverage_complete` 和 `results`。每个用例记录 `case`、`expected_rule`、`expected_payload`、`expected_policy`、`requires_http`、`http_received`、`http_status`、`policy_matched`、`passed`；实际格式见 [合成测试](tests/release-verification.test.mjs)。工具不会启动核心，也不会代替真实网络检查。
+
+局部诊断可以省略 `--require-complete-coverage`；省略 `--origin` 时，源站比较明确返回 `null`，不能据此宣称源站已验收。正式验收应同时提供两项。HTTP 响应与目标业务可用性分别报告，例如 401/403 不证明账号、地区或 API 功能可用。
+
+上游在测试后更新节点时，保留原候选和报告，在新目录保存新文件并重新测试。不能只更新期望哈希、覆盖旧候选或取消断言，让旧证据通过新文件的验收。
+
 ## 开发检查
 
 ```sh
