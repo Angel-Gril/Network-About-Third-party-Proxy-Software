@@ -133,7 +133,7 @@ try {
                     provider = repository / "providers/flybird"
                     source = provider / "src"
                     source.mkdir(parents=True)
-                    for name in ("export.ps1", "routing.ps1", "validation.ps1"):
+                    for name in ("export.ps1", "routing.ps1", "validation.ps1", "profile_codec.ps1"):
                         shutil.copy2(ROOT / name, source / name)
                     shutil.copytree(ROOT.parent / "templates", provider / "templates")
                     caller = Path(temporary) / "unrelated working directory"
@@ -231,6 +231,54 @@ $resolver = { param($server) $answers[$server] }
 Get-ClashProxyServerResolutionSummary -ResolveHost $resolver -Yaml """ + ps_literal(yaml) + " | ConvertTo-Json -Compress")
                 self.assertEqual(result["ResolvableServerCount"], 2)
                 self.assertEqual(result["UnresolvableServerCount"], 4)
+
+    def test_fake_ip_is_rechecked_but_only_real_dns_records_are_accepted(self):
+        for shell in SHELLS:
+            with self.subTest(shell=Path(shell).name):
+                result, _ = self.run_script(shell, """
+. './validation.ps1'
+$global:Queries = 0
+$lookup = { param($name) [Net.IPAddress]::Parse('198.18.0.1') }
+$query = {
+    param($name, $type)
+    $global:Queries++
+    [pscustomobject]@{ Status = 0; Answer = @(
+        [pscustomobject]@{ type = 5; data = '203.0.113.7' },
+        [pscustomobject]@{ type = 1; data = '198.18.0.2' },
+        [pscustomobject]@{ type = 1; data = '203.0.113.8' }
+    ) }
+}
+$addresses = @(Resolve-ClashServerAddresses 'entry.example' -SystemLookup $lookup -DnsQuery $query)
+[pscustomobject]@{ addresses = @($addresses | ForEach-Object { $_.ToString() }); queries = $global:Queries } | ConvertTo-Json -Compress
+""")
+                self.assertEqual(result["addresses"], ["203.0.113.8"])
+                self.assertEqual(result["queries"], 1)
+
+    def test_fake_ip_dns_recheck_failures_still_reject_the_endpoint(self):
+        for shell in SHELLS:
+            with self.subTest(shell=Path(shell).name):
+                result, _ = self.run_script(shell, """
+. './validation.ps1'
+$lookup = { param($name) [Net.IPAddress]::Parse('198.18.0.1') }
+$failed = @(Resolve-ClashServerAddresses 'entry.example' -SystemLookup $lookup -DnsQuery { throw 'Synthetic network failure' })
+$missing = @(Resolve-ClashServerAddresses 'entry.example' -SystemLookup $lookup -DnsQuery { [pscustomobject]@{ Status = 3 } })
+$fake = @(Resolve-ClashServerAddresses 'entry.example' -SystemLookup $lookup -DnsQuery {
+    [pscustomobject]@{ Status = 0; Answer = @([pscustomobject]@{ type = 1; data = '198.18.0.2' }) }
+})
+[pscustomobject]@{ failed = $failed.Count; missing = $missing.Count; fake = $fake.Count } | ConvertTo-Json -Compress
+""")
+                self.assertEqual(result, {"failed": 0, "missing": 0, "fake": 0})
+
+    def test_real_system_dns_does_not_call_an_external_resolver(self):
+        for shell in SHELLS:
+            with self.subTest(shell=Path(shell).name):
+                result, _ = self.run_script(shell, """
+. './validation.ps1'
+$global:Queried = $false
+$addresses = @(Resolve-ClashServerAddresses 'entry.example' -SystemLookup { [Net.IPAddress]::Parse('203.0.113.8') } -DnsQuery { $global:Queried = $true })
+[pscustomobject]@{ count = $addresses.Count; queried = $global:Queried } | ConvertTo-Json -Compress
+""")
+                self.assertEqual(result, {"count": 1, "queried": False})
 
 
 if __name__ == "__main__":

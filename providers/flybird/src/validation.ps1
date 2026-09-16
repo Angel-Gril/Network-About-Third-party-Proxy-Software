@@ -21,10 +21,46 @@ function Test-ClashServerAddress {
     return ($value -notmatch '^198\.(18|19)\.' -and -not $value.StartsWith('fdfe:dcba:9876:'))
 }
 
+function Resolve-ClashServerAddresses {
+    param(
+        [Parameter(Mandatory = $true)][string]$ServerName,
+        [scriptblock]$SystemLookup = { param($Name) [Net.Dns]::GetHostAddresses($Name) },
+        [scriptblock]$DnsQuery = {
+            param($Name, $RecordType)
+            $url = "https://dns.google/resolve?name=$([Uri]::EscapeDataString($Name))&type=$RecordType"
+            Invoke-RestMethod -Uri $url -Headers @{ Accept = "application/dns-json" } -TimeoutSec 10
+        }
+    )
+    $addresses = @(& $SystemLookup $ServerName)
+    $real = @($addresses | Where-Object { Test-ClashServerAddress $_ })
+    if ($real.Count -gt 0 -or $addresses.Count -eq 0) { return $real }
+
+    # Only synthetic TUN answers trigger a second opinion. A Fake-IP by itself
+    # remains a failure; do not treat it as a usable endpoint or rewrite nodes.
+    foreach ($recordType in @("A", "AAAA")) {
+        try {
+            $reply = & $DnsQuery $ServerName $recordType
+            if ($null -eq $reply.Status -or $reply.Status -ne 0) { continue }
+            $real = @(
+                foreach ($answer in $reply.Answer) {
+                    $address = $null
+                    if ($answer.type -notin @(1, 28)) { continue }
+                    if ([Net.IPAddress]::TryParse([string]$answer.data, [ref]$address)) {
+                        if (Test-ClashServerAddress $address) { $address }
+                    }
+                }
+            )
+            if ($real.Count -gt 0) { return $real }
+        }
+        catch { }
+    }
+    return @()
+}
+
 function Get-ClashProxyServerResolutionSummary {
     param(
         [Parameter(Mandatory = $true)][string]$Yaml,
-        [scriptblock]$ResolveHost = { param($ServerName) [Net.Dns]::GetHostAddresses($ServerName) }
+        [scriptblock]$ResolveHost = { param($ServerName) Resolve-ClashServerAddresses $ServerName }
     )
 
     $servers = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)

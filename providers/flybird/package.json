@@ -6,7 +6,7 @@
   "exports": "./src/subscription.js",
   "engines": { "node": ">=22" },
   "scripts": {
-    "test": "node --test tests/subscription.test.mjs",
+    "test": "node --test",
     "check": "node --check src/subscription.js"
   }
 }

@@ -10,10 +10,9 @@ param(
 
 . (Join-Path $PSScriptRoot "routing.ps1")
 . (Join-Path $PSScriptRoot "validation.ps1")
+. (Join-Path $PSScriptRoot "profile_codec.ps1")
 
 $ErrorActionPreference = "Stop"
-$ProfileAesKey = "14f521a32997b257"
-$ProfileAesIv = "d217125f4b9cc9c8"
 $FallbackApiBaseUrl = "https://fbesa.apiv2.a047.com/api/v1"
 
 function Get-PlainPassword {
@@ -50,6 +49,7 @@ function Get-FlyingBirdApiBaseCandidates {
             try {
                 $preferences = Get-Content -Raw -LiteralPath $file.FullName | ConvertFrom-Json
                 $detectedUrl = [string]$preferences.'flutter.api_base_url'
+                if ($detectedUrl) { $detectedUrl = Decrypt-FlyingBirdPreference $detectedUrl }
                 if ($detectedUrl) {
                     $rawCandidates.Add([pscustomobject]@{ Url = $detectedUrl; Source = "client-preferences" })
                 }
@@ -76,44 +76,6 @@ function Get-FlyingBirdApiBaseCandidates {
     }
     if ($result.Count -eq 0) { throw "没有可用的 FlyingBird API 地址" }
     return $result.ToArray()
-}
-
-function Convert-Base64TextToBytes {
-    param([string]$Text)
-    $normalized = ($Text -replace '\s+', '').Replace('-', '+').Replace('_', '/')
-    $padding = $normalized.Length % 4
-    if ($padding -gt 0) {
-        $normalized += ('=' * (4 - $padding))
-    }
-    return [Convert]::FromBase64String($normalized)
-}
-
-function Decrypt-FlyingBirdProfile {
-    param([string]$CipherText)
-
-    $outer = Convert-Base64TextToBytes $CipherText
-    $aes = [System.Security.Cryptography.Aes]::Create()
-    $decryptor = $null
-    try {
-        $aes.Mode = [System.Security.Cryptography.CipherMode]::CBC
-        $aes.Padding = [System.Security.Cryptography.PaddingMode]::PKCS7
-        $aes.Key = [Text.Encoding]::ASCII.GetBytes($ProfileAesKey)
-        $aes.IV = [Text.Encoding]::ASCII.GetBytes($ProfileAesIv)
-        $decryptor = $aes.CreateDecryptor()
-        $plainBytes = $decryptor.TransformFinalBlock($outer, 0, $outer.Length)
-    }
-    finally {
-        if ($decryptor) { $decryptor.Dispose() }
-        $aes.Dispose()
-    }
-
-    $inner = [Text.Encoding]::UTF8.GetString($plainBytes).Trim()
-    try {
-        return [Text.Encoding]::UTF8.GetString((Convert-Base64TextToBytes $inner))
-    }
-    catch {
-        return $inner
-    }
 }
 
 function Convert-FlyingBirdSubscriptionContentToClashYaml {
@@ -438,6 +400,8 @@ foreach ($candidateUrl in $baseCandidateUrls) {
     }
 }
 
+$subscriptionHeaders = $commonHeaders.Clone()
+$subscriptionHeaders["User-Agent"] = "securitynet/v3.1.8 clash-verge Platform/windows"
 $clashYaml = $null
 $clashUrl = $null
 $downloadFailures = New-Object System.Collections.Generic.List[string]
@@ -445,7 +409,7 @@ foreach ($candidateUrl in $candidateUrls) {
     try {
         $candidateContent = Invoke-FlyingBirdWebRequest `
             -Uri $candidateUrl `
-            -Headers $commonHeaders `
+            -Headers $subscriptionHeaders `
             -TimeoutSec 30
         $candidateYaml = Convert-FlyingBirdSubscriptionContentToClashYaml $candidateContent
         $resolution = Wait-ClashProxyServerResolution -Yaml $candidateYaml -Attempts 3 -DelaySeconds 2

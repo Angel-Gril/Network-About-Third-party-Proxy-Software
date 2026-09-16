@@ -21,7 +21,7 @@ const LOGIN_HEADERS = {
 const USER_INFO_HEADERS = LOGIN_HEADERS;
 
 const CLASH_HEADERS = {
-  "User-Agent": "NetFlow/v3.0.3 clash-verge Platform/windows",
+  "User-Agent": "securitynet/v3.1.8 clash-verge Platform/windows",
   "x-auth-token": "K9rM2bA7vP5wN8x",
   "x-app-package-name": "atlas",
   "x-client-platform": "windows",
@@ -29,6 +29,8 @@ const CLASH_HEADERS = {
 
 const DEFAULT_PROFILE_KEY = "14f521a32997b257";
 const DEFAULT_PROFILE_IV = "d217125f4b9cc9c8";
+// Shared client protocol constant, not an account or subscription credential.
+const CURRENT_PROFILE_SECRET = "fd53c838dbceff962d5d2aed5cdc548e";
 
 const META_RULES_BASE =
   "https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest";
@@ -456,29 +458,33 @@ function looksLikeHtml(text, contentType = "") {
   );
 }
 
-export async function decryptProfile(ciphertext, keyAscii, ivAscii) {
-  const key = await crypto.subtle.importKey(
-    "raw",
-    enc.encode(keyAscii),
-    { name: "AES-CBC", length: 128 },
-    false,
-    ["decrypt"],
-  );
-  const plain = await crypto.subtle.decrypt(
-    {
-      name: "AES-CBC",
-      iv: enc.encode(ivAscii),
-    },
-    key,
-    base64ToBytes(ciphertext),
-  );
-
-  const inner = dec.decode(plain).trim();
+export async function decryptProfile(ciphertext, keyAscii = DEFAULT_PROFILE_KEY, ivAscii = DEFAULT_PROFILE_IV) {
+  let envelope;
+  try { envelope = base64ToBytes(ciphertext); }
+  catch { throw new HttpError(502, "subscription could not be authenticated or decoded"); }
+  // 3.1.8: Base64(nonce[12] | ciphertext | tag[16]), keyed by SHA256(secret).
   try {
-    return base64DecodeUtf8(inner);
-  } catch {
-    return inner;
+    if (envelope.length >= 28) {
+      const digest = await crypto.subtle.digest("SHA-256", enc.encode(CURRENT_PROFILE_SECRET));
+      const key = await crypto.subtle.importKey("raw", digest, "AES-GCM", false, ["decrypt"]);
+      const plain = await crypto.subtle.decrypt(
+        { name: "AES-GCM", iv: envelope.slice(0, 12), tagLength: 128 }, key, envelope.slice(12),
+      );
+      const yaml = dec.decode(plain);
+      if (looksLikeMihomoYaml(yaml)) return yaml;
+    }
+  } catch { /* Try the previous client format below. */ }
+  if (envelope.length > 0 && envelope.length % 16 === 0) {
+    try {
+      const key = await crypto.subtle.importKey("raw", enc.encode(keyAscii), "AES-CBC", false, ["decrypt"]);
+      const plain = await crypto.subtle.decrypt({ name: "AES-CBC", iv: enc.encode(ivAscii) }, key, envelope);
+      const inner = dec.decode(plain).trim();
+      if (looksLikeMihomoYaml(inner)) return inner;
+      const yaml = base64DecodeUtf8(inner);
+      if (looksLikeMihomoYaml(yaml)) return yaml;
+    } catch { /* No unauthenticated or structurally invalid output is returned. */ }
   }
+  throw new HttpError(502, "subscription could not be authenticated or decoded");
 }
 
 export function extractProxiesBlock(clashYaml) {

@@ -16,6 +16,10 @@ pwsh -NoProfile -File .\providers\flybird\src\export.ps1 -Email 'you@example.com
 
 不传密码时会安全提示输入。脚本从已安装客户端的首选项发现 API 地址，也支持 `-ApiBaseUrl` 显式覆盖；需要 HTTP 代理时使用 `-ProxyUrl`。
 
+已适配 Windows 客户端 `3.1.8+2026071612`：识别 `enc1:` 加密的 API 地址首选项，按新版客户端标识下载订阅，并验证 AES-256-GCM 认证标签后解密。旧 AES-128-CBC 订阅继续兼容。Windows PowerShell 5.1 使用系统 CNG，PowerShell 7 使用 .NET 的 AES-GCM；无需额外密码学依赖。账号仍由参数或交互输入提供。
+
+本机开启 TUN 时，如果系统 DNS 仅返回 Fake-IP，导出器通过 Google DNS-over-HTTPS 复核节点域名。只有取得真实 A/AAAA 地址才继续；正常 DNS 不调用外部复核，配置中的域名也不替换成查询结果。复核失败仍保留原导出文件。
+
 已有 Python 工作流可调用薄启动器：
 
 ```sh
@@ -41,6 +45,7 @@ Python 入口仅转发参数到同目录的 PowerShell 导出器，不实现另�
 ## 模块归属
 
 - [src/export.ps1](src/export.ps1)：本机登录、下载、解密与文件输出。
+- [src/profile_codec.ps1](src/profile_codec.ps1)：新版首选项、GCM 订阅和旧 CBC 格式的解码。
 - [src/routing.ps1](src/routing.ps1)、[src/validation.ps1](src/validation.ps1)：本地模板应用与入口检查。
 - [src/subscription.js](src/subscription.js)：JavaScript 订阅处理、共享分流、链接和缓存接口。
 - [src/sync_worker_cache.ps1](src/sync_worker_cache.ps1)：上传已有 YAML。

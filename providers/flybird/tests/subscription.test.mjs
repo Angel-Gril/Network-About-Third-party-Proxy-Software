@@ -398,7 +398,7 @@ test("GET /sub can pull upstream Clash config directly from token query", async 
     assert.equal(calls.some((value) => value.includes("/passport/auth/login")), false);
     assert.equal(
       subscribeHeaders[0]["User-Agent"],
-      "NetFlow/v3.0.3 clash-verge Platform/windows",
+      "securitynet/v3.1.8 clash-verge Platform/windows",
     );
     assert.equal(subscribeHeaders[0]["x-client-platform"], "windows");
     assert.match(body, /geo-auto-update: true/);
