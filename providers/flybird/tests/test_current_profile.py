@@ -6,9 +6,8 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
-from cryptography.hazmat.primitives.padding import PKCS7
+from Crypto.Cipher import AES
+from Crypto.Util.Padding import pad
 import yaml
 
 import test_exporter as exporter_tests
@@ -24,7 +23,9 @@ YAML = "proxies:\n  - " + json.dumps(NODE, ensure_ascii=False, separators=(",", 
 
 def envelope(text):
     nonce = bytes(range(12))
-    return nonce + AESGCM(KEY).encrypt(nonce, text.encode("utf-8"), None)
+    cipher = AES.new(KEY, AES.MODE_GCM, nonce=nonce)
+    ciphertext, tag = cipher.encrypt_and_digest(text.encode("utf-8"))
+    return nonce + ciphertext + tag
 
 
 @unittest.skipUnless(SHELLS, "PowerShell is not installed")
@@ -80,10 +81,9 @@ class CurrentProfileTests(unittest.TestCase):
                     self.assertNotIn(base64.b64encode(bad).decode(), logs)
 
     def test_legacy_encryption_remains_compatible(self):
-        padder = PKCS7(128).padder()
         inner = base64.b64encode(YAML.encode())
-        cipher = Cipher(algorithms.AES(b"14f521a32997b257"), modes.CBC(b"d217125f4b9cc9c8")).encryptor()
-        legacy = base64.b64encode(cipher.update(padder.update(inner) + padder.finalize()) + cipher.finalize()).decode()
+        cipher = AES.new(b"14f521a32997b257", AES.MODE_CBC, iv=b"d217125f4b9cc9c8")
+        legacy = base64.b64encode(cipher.encrypt(pad(inner, AES.block_size))).decode()
         for shell in SHELLS:
             with self.subTest(shell=Path(shell).name), tempfile.TemporaryDirectory() as directory:
                 result, output, _ = self.export(shell, directory, legacy)
