@@ -70,4 +70,12 @@ Windows `3.1.8+2026071612` 已改变这一链路：订阅请求使用 `securityn
 
 当前 API 地址可能来自配置和官方 `lvfile.v2` 发现文件，后者使用带认证的 AES-GCM 包装。验证发现文件后再更新备用地址，不把一次响应中的 IP 固化为长期入口。
 
+## MonoCloud 1.0.1：套餐目录与 Shadowsocks 节点
+
+已分析 Windows 样本 SHA-256 为 `2a082057e660602e6b61e977287f4b461bbc472427c558e8fb1b6f872bc455f1`，使用 Wails UI 与 Mihomo 核心。认证和参数链为 `POST /oauth/token` → `GET /api/service` → `GET /api/{plan.type}/{service.id}`；认证请求同时带桌面客户端标识与版本头。客户端内置 ID/secret 是通用协议常量，账号、访问 token 和节点密码仍是私密数据。
+
+实际账号仅确认 `shadowsocks` 套餐，节点响应逐条提供 `hostname`、`port`、`encryption` 和 `password`，可以无损转换为 Mihomo `ss` 节点和 `ss://` 链接。套餐目录中的 `vpn` 分支尚未取得授权样本验证，不能从文件名 `Clash_tls` 或客户端模板推断其标准协议；当前实现明确拒绝该类型。
+
+客户端目录中的 `Clash_ss`、`Clash_tls` 是含 `{tunnel}` 与 `{Clash-rule}` 的模板，不是已经填入凭据的订阅。在线接口才是完整节点来源。系统 TUN 返回 Fake-IP 时，用独立 DNS 复核真实 A/AAAA，但不把查询结果写死进节点。
+
 在本仓库中，`providers/leapvpn/src/leapvpn/export.py` 是转换实现，同包的 `auth.py` 管理身份与续期，`refresh.py` 负责无人值守调用。安装 `providers/leapvpn/` 后使用 `python -m leapvpn.export` 或 `python -m leapvpn.refresh`；应用调用同一包，不复制算法。

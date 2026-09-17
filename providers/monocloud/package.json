@@ -1,0 +1,13 @@
+{
+  "name": "@proxy-toolkit/monocloud",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "exports": "./src/client.js",
+  "bin": { "monocloud-export": "./src/export.mjs" },
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "test": "node --test",
+    "check": "node --check src/client.js && node --check src/export.mjs"
+  }
+}

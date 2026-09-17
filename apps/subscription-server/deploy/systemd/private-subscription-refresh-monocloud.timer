@@ -1,0 +1,11 @@
+[Unit]
+Description=Refresh MonoCloud private subscription every six hours
+
+[Timer]
+OnCalendar=*-*-* 05,11,17,23:15:00
+RandomizedDelaySec=10m
+Persistent=true
+Unit=private-subscription-refresh@monocloud.service
+
+[Install]
+WantedBy=timers.target

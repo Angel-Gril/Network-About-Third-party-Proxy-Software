@@ -2,7 +2,7 @@
 
 [![Validate and package](https://github.com/Angel-Gril/Network-About-Third-party-Proxy-Software/actions/workflows/ci.yml/badge.svg)](https://github.com/Angel-Gril/Network-About-Third-party-Proxy-Software/actions/workflows/ci.yml)
 
-从自己有权使用的账号或客户端配置中提取代理参数，转换为标准订阅，并提供可选的缓存分发服务。包含 FlyingBird（飞鸟云）、LeapVPN（飞跃）两家实现，以及可迁移到同类客户端的分析 skill。
+从自己有权使用的账号或客户端配置中提取代理参数，转换为标准订阅，并提供可选的缓存分发服务。包含 FlyingBird（飞鸟云）、LeapVPN（飞跃）和 MonoCloud 三家实现，以及可迁移到同类客户端的分析 skill。
 
 ## 支持情况
 
@@ -10,6 +10,7 @@
 | --- | --- | --- |
 | [FlyingBird / 飞鸟云](providers/flybird/README.md) | 账号登录、完整订阅解密、Mihomo 分流、v2rayN 导出；可选 Worker 和 VPS 分发 | PowerShell 本地导出、JavaScript 共享包 |
 | [LeapVPN / 飞跃](providers/leapvpn/README.md) | 协议 X 的逐线路提取、Clash/Xray/VLESS 导出、设备身份持久化与会话续期 | 可安装的 Python 包 |
+| [MonoCloud](providers/monocloud/README.md) | 账号登录、套餐目录、Shadowsocks 节点、Clash 与 `ss://` 导出 | JavaScript 共享包与 CLI |
 
 飞跃实现基于已分析的 1.5.8 Windows 客户端；协议 X 为 VLESS + WebSocket + TLS，协议 W 的第三方核心兼容性尚未验证。软件升级或上游变化后，需要重新确认适用范围。
 
@@ -19,6 +20,7 @@
 providers/                   提供者实现
   flybird/                   源码、测试、本地导出模板
   leapvpn/                   Python 包与测试
+  monocloud/                 JavaScript 账号导出与测试
 apps/                        可部署应用
   cloudflare-worker/         Worker 入口与 Wrangler 配置
   subscription-server/       VPS 服务、管理页、Nginx/systemd 模板
@@ -29,7 +31,7 @@ tests/                       仓库工具测试
 docs/                        架构、开发与迁移说明
 ```
 
-两家实现平级放在 `providers/`；应用复用提供者代码。JavaScript 使用 npm workspaces，依赖由根目录唯一的 lockfile 管理。详见 [架构说明](docs/ARCHITECTURE.md)；旧版本用户先看 [迁移说明](docs/MIGRATION.md)。
+三个提供者平级放在 `providers/`；应用复用提供者代码。JavaScript 使用 npm workspaces，依赖由根目录唯一的 lockfile 管理。详见 [架构说明](docs/ARCHITECTURE.md)；旧版本用户先看 [迁移说明](docs/MIGRATION.md)。
 
 ## 快速开始
 
@@ -63,7 +65,19 @@ python -m leapvpn.export --fetch-all --out-dir exports/leap-first
 ### 可选分发服务
 
 - [Cloudflare Worker](apps/cloudflare-worker/README.md)：加密链接、KV 缓存与规则资源代理。
-- [私有订阅服务器](apps/subscription-server/README.md)：两家独立读取 token、定时刷新、最后有效缓存和管理入口。
+- [私有订阅服务器](apps/subscription-server/README.md)：三家独立读取 token、定时刷新、最后有效缓存和管理入口。
+
+### MonoCloud：账号导出
+
+需要 Node.js 22+。账号保存在忽略的私有 JSON 文件中：
+
+```sh
+node providers/monocloud/src/export.mjs \
+  --credentials private/monocloud.json \
+  --out-dir exports/monocloud-first
+```
+
+当前实现绑定 Windows 客户端 1.0.1，已实际验证 Shadowsocks 套餐；详情见 [MonoCloud 说明](providers/monocloud/README.md)。
 
 导出文件与完整订阅链接包含连接凭据，应保存在本地私有目录。仓库提供示例域名和配置，不包含可直接使用的账号或订阅。
 

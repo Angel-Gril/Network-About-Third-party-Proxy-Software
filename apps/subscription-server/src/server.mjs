@@ -26,6 +26,7 @@ const loadRuleAsset = createRuleLoader({ cacheDirectory: path.join(cacheDirector
 const tokenStores = new Map([
   ["flybird", await createTokenStore(readTokenFile)],
   ["leapvpn", await createTokenStore(process.env.LEAPVPN_READ_TOKEN_FILE)],
+  ["monocloud", await createTokenStore(process.env.MONOCLOUD_READ_TOKEN_FILE)],
 ]);
 const buildSubscriptionUrl = (provider, token) => `https://${publicDomain}/s/${token}/${provider}.yaml`;
 

@@ -33,8 +33,10 @@ htpasswd() { printf 'htpasswd\n' >> "$CALLS_LOG"; return 94; }
         with tempfile.TemporaryDirectory() as directory:
             trace = Path(directory) / 'calls.txt'
             for existing in ('/etc/private-subscription/service.env',
+                             '/etc/private-subscription/monocloud.json',
                              '/var/lib/private-subscription/read-tokens/flybird',
                              '/var/lib/private-subscription/read-tokens/leapvpn',
+                             '/var/lib/private-subscription/read-tokens/monocloud',
                              '/etc/nginx/private-subscription.htpasswd'):
                 with self.subTest(existing=existing):
                     trace.write_text('')

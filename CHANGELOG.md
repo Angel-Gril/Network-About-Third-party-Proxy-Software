@@ -2,6 +2,9 @@
 
 ## 未发布
 
+- 新增 MonoCloud 1.0.1 账号认证和 Shadowsocks 套餐导出，提供 Clash、`ss://`、备用 API、限流停止与错误脱敏回归。
+- 私有订阅服务器新增 MonoCloud 独立凭据、读取 token、定时刷新、最后有效缓存和管理入口；未验证的 VPN 套餐明确拒绝发布。
+
 - 适配飞鸟 Windows 3.1.8 的订阅客户端标识、AES-256-GCM 响应与 `enc1:` 地址首选项，保留旧 CBC 格式；Windows PowerShell 5.1 通过系统 CNG 验证认证标签。
 - 本地导出遇到 TUN Fake-IP 时用 DNS-over-HTTPS 复核真实节点入口；失败继续保留旧文件。补充新版加密、篡改拒绝、旧格式兼容和服务器缓存保护回归。
 

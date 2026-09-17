@@ -1,6 +1,6 @@
 # 目录与模块边界
 
-仓库按提供者实现、可部署应用和开发工具划分。两家提取器平级，源码、测试、模板各有固定位置。
+仓库按提供者实现、可部署应用和开发工具划分。三家提取器平级，源码、测试、模板各有固定位置。
 
 ```text
 providers/
@@ -12,6 +12,9 @@ providers/
     src/leapvpn/           export、auth、refresh、sync、receive
     tests/                 该提供者的测试
     pyproject.toml         包元数据和运行依赖
+  monocloud/               MonoCloud：JavaScript 账号认证与 Shadowsocks 导出
+    src/                   共享 API 客户端与 CLI
+    tests/                 合成认证、转换和失败保护
 apps/
   cloudflare-worker/       Cloudflare 入口和 Wrangler 配置
   subscription-server/     Node 服务、管理页及服务器部署模板
@@ -31,8 +34,9 @@ docs/                      架构、开发和迁移说明
 
 - `@proxy-toolkit/flybird` 是飞鸟 JavaScript 实现的唯一 npm 包；本地 PowerShell 实现在同一提供者目录中。
 - Worker 应用只提供部署入口，导入飞鸟包，不复制它的代码。
-- 订阅服务导入同一飞鸟包，调用飞跃导出器，并负责验证、缓存和读取 token。它不再按文件路径导入另一个应用。
+- 订阅服务导入飞鸟与 MonoCloud 包，调用飞跃导出器，并负责验证、缓存和读取 token。它不再按文件路径导入另一个应用。
 - `leapvpn` 使用标准 Python src 布局，通过 pip 安装后以 `python -m leapvpn.export` 等模块入口运行。
+- `@proxy-toolkit/monocloud` 是 MonoCloud 的唯一认证与转换实现，本地 CLI 和订阅服务共同调用。
 - skill 总结分析和验证方法，不持有另一份提取算法。
 
 ## 路径约定

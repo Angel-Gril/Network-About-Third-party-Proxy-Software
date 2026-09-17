@@ -1,1 +1,1 @@
-export const PROVIDERS = new Set(["flybird", "leapvpn"]);
+export const PROVIDERS = new Set(["flybird", "leapvpn", "monocloud"]);

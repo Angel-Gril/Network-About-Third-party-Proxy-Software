@@ -6,6 +6,7 @@
 
 - 飞鸟实现：`providers/flybird/src/`；Node 模块由 `@proxy-toolkit/flybird` 导出，Python 文件只启动本地 PowerShell 导出器。
 - 飞跃实现：`providers/leapvpn/src/leapvpn/`；运行依赖只在提供者 `pyproject.toml` 中维护。
+- MonoCloud 实现：`providers/monocloud/src/`；Node 模块由 `@proxy-toolkit/monocloud` 导出，本地和 VPS 共用。
 - Worker 部署入口：`apps/cloudflare-worker/`。
 - VPS 分发、缓存和访问控制：`apps/subscription-server/`。
 - 可复用方法：`skills/extract-proxy-subscriptions/`；客户端差异放在其 references 中。

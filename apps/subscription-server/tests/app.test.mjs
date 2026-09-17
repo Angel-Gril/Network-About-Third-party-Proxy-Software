@@ -11,14 +11,19 @@ async function fixture() {
   const calls = [];
   let readToken = "a".repeat(40);
   let leapToken = "c".repeat(40);
+  let monoToken = "e".repeat(40);
   const handler = createHandler({
     cacheDirectory: directory,
-    getReadToken: async (provider = "flybird") => provider === "leapvpn" ? leapToken : readToken,
-    getSubscriptionUrl: async (provider = "flybird") => `https://sub.example/s/${provider === "leapvpn" ? leapToken : readToken}/${provider}.yaml`,
+    getReadToken: async (provider = "flybird") => provider === "leapvpn" ? leapToken : provider === "monocloud" ? monoToken : readToken,
+    getSubscriptionUrl: async (provider = "flybird") => `https://sub.example/s/${provider === "leapvpn" ? leapToken : provider === "monocloud" ? monoToken : readToken}/${provider}.yaml`,
     rotateSubscriptionUrl: async (provider = "flybird") => {
       if (provider === "leapvpn") {
         leapToken = "d".repeat(40);
         return `https://sub.example/s/${leapToken}/leapvpn.yaml`;
+      }
+      if (provider === "monocloud") {
+        monoToken = "f".repeat(40);
+        return `https://sub.example/s/${monoToken}/monocloud.yaml`;
       }
       readToken = "b".repeat(40);
       return `https://sub.example/s/${readToken}/flybird.yaml`;
@@ -96,7 +101,7 @@ test("reports provider status and starts refresh jobs", async () => {
       method: "POST",
       headers: { "X-Admin-Action": "private-subscription-admin" },
     });
-    assert.deepEqual(Object.keys(status.providers), ["flybird", "leapvpn"]);
+    assert.deepEqual(Object.keys(status.providers), ["flybird", "leapvpn", "monocloud"]);
     assert.equal(status.providers.flybird.available, true);
     assert.equal(status.providers.flybird.proxyCount, 90);
     assert.equal(subscription.url, `https://sub.example/s/${"a".repeat(40)}/flybird.yaml`);
@@ -132,6 +137,30 @@ test("serves LeapVPN under its own token and preserves the FlyBird token", async
     assert.equal((await fetch(`${app.url}/admin/api/refresh/unknown`, {
       method: "POST", headers: { "X-Admin-Action": "private-subscription-admin" },
     })).status, 404);
+  } finally { await app.close(); }
+});
+
+test("serves MonoCloud under its own token and preserves the existing provider tokens", async () => {
+  const app = await fixture();
+  try {
+    await fs.writeFile(path.join(app.directory, "flybird.yaml"), "proxies:\n  - name: fly\n");
+    await fs.writeFile(path.join(app.directory, "monocloud.yaml"), "proxies:\n  - name: mono\n");
+    assert.equal((await fetch(`${app.url}/s/${"a".repeat(40)}/monocloud.yaml`)).status, 404);
+    assert.equal((await fetch(`${app.url}/s/${"e".repeat(40)}/monocloud.yaml`)).status, 200);
+    assert.equal((await fetch(`${app.url}/s/${"e".repeat(40)}/flybird.yaml`)).status, 404);
+    const link = await fetch(`${app.url}/admin/api/subscription-url?provider=monocloud`).then(r => r.json());
+    assert.equal(link.url, `https://sub.example/s/${"e".repeat(40)}/monocloud.yaml`);
+    const reset = await fetch(`${app.url}/admin/api/reset-subscription-url?provider=monocloud`, {
+      method:"POST", headers:{"X-Admin-Action":"private-subscription-admin"},
+    }).then(r => r.json());
+    assert.equal(reset.url, `https://sub.example/s/${"f".repeat(40)}/monocloud.yaml`);
+    assert.equal((await fetch(`${app.url}/s/${"e".repeat(40)}/monocloud.yaml`)).status, 404);
+    assert.equal((await fetch(`${app.url}/s/${"a".repeat(40)}/flybird.yaml`)).status, 200);
+    const refresh = await fetch(`${app.url}/admin/api/refresh/monocloud`, {
+      method:"POST", headers:{"X-Admin-Action":"private-subscription-admin"},
+    });
+    assert.equal(refresh.status, 202);
+    assert.deepEqual(app.calls, ["monocloud"]);
   } finally { await app.close(); }
 });
 

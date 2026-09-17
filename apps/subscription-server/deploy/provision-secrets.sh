@@ -8,8 +8,10 @@ for existing in \
   /etc/private-subscription/flybird.json \
   /etc/private-subscription/leapvpn.json \
   /etc/private-subscription/leapvpn-account.json \
+  /etc/private-subscription/monocloud.json \
   /var/lib/private-subscription/read-tokens/flybird \
   /var/lib/private-subscription/read-tokens/leapvpn \
+  /var/lib/private-subscription/read-tokens/monocloud \
   /var/lib/private-subscription/state/leapvpn/session.json \
   /etc/nginx/private-subscription.htpasswd
 do
@@ -22,6 +24,7 @@ done
 umask 0077
 read_token="$(openssl rand -hex 32)"
 leap_token="$(openssl rand -hex 32)"
+monocloud_token="$(openssl rand -hex 32)"
 admin_password="$(openssl rand -base64 24 | tr -d '=+/\n' | cut -c1-24)"
 
 install -d -o root -g subsvc -m 0750 /etc/private-subscription
@@ -36,6 +39,9 @@ install -d -o subsvc -g subsvc -m 0700 /var/lib/private-subscription/state/leapv
   printf 'SUBSCRIPTION_CACHE_DIR=/var/lib/private-subscription/cache\n'
   printf 'SUBSCRIPTION_READ_TOKEN_FILE=/var/lib/private-subscription/read-tokens/flybird\n'
   printf 'LEAPVPN_READ_TOKEN_FILE=/var/lib/private-subscription/read-tokens/leapvpn\n'
+  printf 'MONOCLOUD_READ_TOKEN_FILE=/var/lib/private-subscription/read-tokens/monocloud\n'
+  printf 'MONOCLOUD_CREDENTIAL_FILE=/etc/private-subscription/monocloud.json\n'
+  printf 'MONOCLOUD_MIN_PROXIES=1\n'
   printf 'LEAPVPN_SESSION_FILE=/etc/private-subscription/leapvpn.json\n'
   printf 'LEAPVPN_CREDENTIAL_FILE=/etc/private-subscription/leapvpn-account.json\n'
   printf 'LEAPVPN_AUTH_STATE_FILE=/var/lib/private-subscription/state/leapvpn/session.json\n'
@@ -48,9 +54,10 @@ chown root:subsvc /etc/private-subscription/service.env
 chmod 0640 /etc/private-subscription/service.env
 printf '%s\n' "$read_token" | install -o subsvc -g subsvc -m 0600 /dev/stdin /var/lib/private-subscription/read-tokens/flybird
 printf '%s\n' "$leap_token" | install -o subsvc -g subsvc -m 0600 /dev/stdin /var/lib/private-subscription/read-tokens/leapvpn
+printf '%s\n' "$monocloud_token" | install -o subsvc -g subsvc -m 0600 /dev/stdin /var/lib/private-subscription/read-tokens/monocloud
 
 printf '%s\n' "$admin_password" | htpasswd -iBc /etc/nginx/private-subscription.htpasswd admin >/dev/null
 chown root:www-data /etc/nginx/private-subscription.htpasswd
 chmod 0640 /etc/nginx/private-subscription.htpasswd
 
-printf '{"adminUser":"admin","adminPassword":"%s","readToken":"%s","leapvpnReadToken":"%s"}\n' "$admin_password" "$read_token" "$leap_token"
+printf '{"adminUser":"admin","adminPassword":"%s","readToken":"%s","leapvpnReadToken":"%s","monocloudReadToken":"%s"}\n' "$admin_password" "$read_token" "$leap_token" "$monocloud_token"

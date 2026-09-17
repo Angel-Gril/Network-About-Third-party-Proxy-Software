@@ -1,5 +1,5 @@
 [Unit]
-Description=Refresh private subscription provider %i
+Description=Refresh private subscription provider %i (flybird, leapvpn or monocloud)
 After=network-online.target
 Wants=network-online.target
 

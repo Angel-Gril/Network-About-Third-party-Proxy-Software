@@ -44,6 +44,7 @@ npm audit --audit-level=high
 | 发布文件与证据校验 | `node --test apps/subscription-server/tests/release-verification.test.mjs` |
 | 飞鸟本地导出 | `python -B scripts/test_python.py --suite flybird` |
 | 飞跃 Python 包 | `python -B scripts/test_python.py --suite leapvpn` |
+| MonoCloud JavaScript | `npm test --workspace @proxy-toolkit/monocloud` |
 | 服务部署工具 | `python -B scripts/test_python.py --suite server` |
 | 仓库工具 | `python -B scripts/test_python.py --suite tooling` |
 | 文档链接 | `python scripts/check_docs.py` |

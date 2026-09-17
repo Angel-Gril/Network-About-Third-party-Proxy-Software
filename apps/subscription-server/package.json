@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@proxy-toolkit/flybird": "1.0.0",
+    "@proxy-toolkit/monocloud": "1.0.0",
     "yaml": "^2.8.1"
   }
 }

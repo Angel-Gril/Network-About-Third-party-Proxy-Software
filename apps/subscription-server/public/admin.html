@@ -51,7 +51,7 @@
   </main>
   <script>
     const body = document.querySelector('#providers');
-    const names = { flybird: 'FlyBird', leapvpn: 'LeapVPN' };
+    const names = { flybird: 'FlyBird', leapvpn: 'LeapVPN', monocloud: 'MonoCloud' };
     const safe = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
     async function load() {
       const response = await fetch('/admin/api/status', { cache: 'no-store' });

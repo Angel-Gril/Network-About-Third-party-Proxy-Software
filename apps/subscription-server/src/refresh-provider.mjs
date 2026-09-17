@@ -5,6 +5,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import { handleRequest, enhanceMihomoConfig } from "@proxy-toolkit/flybird";
+import { fetchMonoCloudSubscription } from "@proxy-toolkit/monocloud";
 import { commitLastGood, recordFailure } from "./cache.mjs";
 import { PROVIDERS } from "./providers.mjs";
 import { prepareSubscription } from "./validate-subscription.mjs";
@@ -97,13 +98,34 @@ async function refreshLeapVpn() {
   }
 }
 
+async function refreshMonoCloud() {
+  const credential = await readCredential(process.env.MONOCLOUD_CREDENTIAL_FILE);
+  try {
+    const result = await fetchMonoCloudSubscription(credential);
+    const domain = process.env.PUBLIC_DOMAIN;
+    if (!domain) throw new Error("Shared routing configuration is incomplete");
+    const defaults = YAML.parse(await fs.readFile(path.join(projectRoot, "templates/mihomo-base.yaml"), "utf8"));
+    const routed = applyRoutingTemplate(result.yaml, `https://${domain}`, enhanceMihomoConfig, defaults);
+    const prepared = await prepareSubscription(routed.yaml, {
+      minimum: Number(process.env.MONOCLOUD_MIN_PROXIES || 1),
+    });
+    prepared.routing = routed.routing;
+    prepared.authentication = { mode: "account_login", planCount: result.planCount };
+    return commitLastGood(cacheDirectory, "monocloud", prepared.yaml, prepared);
+  } finally {
+    credential.email = "";
+    credential.password = "";
+  }
+}
+
 const provider = process.argv[2];
 if (!PROVIDERS.has(provider)) {
-  process.stderr.write("Provider must be flybird or leapvpn\n");
+  process.stderr.write("Provider must be flybird, leapvpn or monocloud\n");
   process.exitCode = 2;
 } else {
   try {
-    const result = await (provider === "flybird" ? refreshFlyBird() : refreshLeapVpn());
+    const result = await (provider === "flybird" ? refreshFlyBird()
+      : provider === "leapvpn" ? refreshLeapVpn() : refreshMonoCloud());
     process.stdout.write(`${JSON.stringify({ ok: true, ...result })}\n`);
   } catch (error) {
     await recordFailure(cacheDirectory, provider, error);
