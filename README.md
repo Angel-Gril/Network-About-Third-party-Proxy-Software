@@ -10,7 +10,7 @@
 | --- | --- | --- |
 | [FlyingBird / 飞鸟云](providers/flybird/README.md) | 账号登录、完整订阅解密、Mihomo 分流、v2rayN 导出；可选 Worker 和 VPS 分发 | PowerShell 本地导出、JavaScript 共享包 |
 | [LeapVPN / 飞跃](providers/leapvpn/README.md) | 协议 X 的逐线路提取、Clash/Xray/VLESS 导出、设备身份持久化与会话续期 | 可安装的 Python 包 |
-| [MonoCloud](providers/monocloud/README.md) | 账号登录、套餐目录、Shadowsocks 节点、Clash 与 `ss://` 导出 | JavaScript 共享包与 CLI |
+| [MonoCloud](providers/monocloud/README.md) | 账号登录、套餐与流量检查、Shadowsocks 节点、Clash、`ss://` 与 v2rayN 导出 | JavaScript 共享包与 CLI |
 
 飞跃实现基于已分析的 1.5.8 Windows 客户端；协议 X 为 VLESS + WebSocket + TLS，协议 W 的第三方核心兼容性尚未验证。软件升级或上游变化后，需要重新确认适用范围。
 
@@ -77,7 +77,7 @@ node providers/monocloud/src/export.mjs \
   --out-dir exports/monocloud-first
 ```
 
-当前实现绑定 Windows 客户端 1.0.1，已实际验证 Shadowsocks 套餐；详情见 [MonoCloud 说明](providers/monocloud/README.md)。
+当前实现绑定 Windows 客户端 1.0.1，已实际验证 Shadowsocks 套餐；本地输出包含 Clash YAML、明文 `ss://` 列表和 v2rayN Base64 订阅。详情见 [MonoCloud 说明](providers/monocloud/README.md)。
 
 导出文件与完整订阅链接包含连接凭据，应保存在本地私有目录。仓库提供示例域名和配置，不包含可直接使用的账号或订阅。
 

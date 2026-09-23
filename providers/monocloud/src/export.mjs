@@ -27,10 +27,14 @@ try {
   await fs.mkdir(temporary, { recursive: false, mode: 0o700 });
   try {
     await fs.writeFile(path.join(temporary, "monocloud_clash.yaml"), result.yaml, { mode: 0o600 });
-    await fs.writeFile(path.join(temporary, "monocloud_ss.txt"), `${result.links.join("\n")}\n`, { mode: 0o600 });
+    const links = `${result.links.join("\n")}\n`;
+    await fs.writeFile(path.join(temporary, "monocloud_ss.txt"), links, { mode: 0o600 });
+    await fs.writeFile(path.join(temporary, "monocloud_v2rayn.txt"), Buffer.from(links, "utf8").toString("base64"),
+      { mode: 0o600 });
     await fs.writeFile(path.join(temporary, "monocloud_meta.json"), `${JSON.stringify({
       source: "account-api", provider: "monocloud", node_count: result.nodeCount,
-      plan_count: result.planCount, api_host: result.baseHost, fetched_at_utc: new Date().toISOString(),
+      plan_count: result.planCount, account: result.account,
+      api_host: result.baseHost, fetched_at_utc: new Date().toISOString(),
     }, null, 2)}\n`, { mode: 0o600 });
     await fs.rename(temporary, output);
   } catch (error) {

@@ -53,6 +53,7 @@ export async function commitLastGood(cacheDirectory, provider, yaml, details = {
     lastError: null,
   };
   if (details.authentication) metadata.authentication = details.authentication;
+  if (details.account) metadata.account = details.account;
   if (details.routing) metadata.routing = details.routing;
   await atomicWrite(metadataPath, `${JSON.stringify(metadata, null, 2)}\n`);
   return metadata;

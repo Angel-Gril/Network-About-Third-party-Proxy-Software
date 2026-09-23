@@ -114,6 +114,31 @@ function catalogRows(payload) {
   return rows;
 }
 
+function assertPlanCurrent(row, nowMs) {
+  const raw = row?.expire_date;
+  if (raw === undefined || raw === null || raw === "") return;
+  const expiresAtMs = Date.parse(String(raw));
+  if (!Number.isFinite(expiresAtMs)) throw new MonoCloudError("MonoCloud plan expiry is invalid");
+  if (expiresAtMs <= nowMs) throw new MonoCloudError("MonoCloud plan has expired");
+}
+
+function summarizeBandwidth(payload) {
+  const value = payload?.data && !Array.isArray(payload) ? payload.data : payload;
+  const upload = Number(value?.upload);
+  const download = Number(value?.download);
+  const allowance = Number(value?.allowance);
+  const resetDays = Number(value?.reset_days);
+  if (![upload, download, allowance].every(number => Number.isFinite(number) && number >= 0)) {
+    throw new MonoCloudError("MonoCloud bandwidth response is incomplete");
+  }
+  const used = upload + download;
+  if (allowance > 0 && used >= allowance) throw new MonoCloudError("MonoCloud traffic allowance is exhausted");
+  return {
+    usagePercent: allowance > 0 ? Math.round((used / allowance) * 10_000) / 100 : null,
+    resetDays: Number.isFinite(resetDays) && resetDays >= 0 ? Math.trunc(resetDays) : null,
+  };
+}
+
 function nodeType(row) {
   const value = String(row?.plan?.type || "").trim().toLowerCase();
   if (value !== "shadowsocks") {
@@ -174,11 +199,16 @@ export async function fetchMonoCloudSubscription(credentials, options = {}) {
   });
   try {
     const catalog = catalogRows(await getJson(fetchImpl, login.baseUrl, "api/service", login.token, "MonoCloud catalog"));
+    const nowMs = Number.isFinite(options.nowMs) ? options.nowMs : Date.now();
     const sourceRows = [];
+    const bandwidth = [];
     for (const plan of catalog) {
+      assertPlanCurrent(plan, nowMs);
       const type = nodeType(plan);
       const id = String(plan?.id || "").trim();
       if (!id) throw new MonoCloudError("MonoCloud plan is missing its identifier");
+      bandwidth.push(summarizeBandwidth(await getJson(fetchImpl, login.baseUrl,
+        `api/bandwidth/${encodeURIComponent(id)}`, login.token, "MonoCloud bandwidth")));
       const payload = await getJson(fetchImpl, login.baseUrl, `api/${type}/${encodeURIComponent(id)}`,
         login.token, "MonoCloud node list");
       const rows = Array.isArray(payload) ? payload : payload?.data;
@@ -191,6 +221,12 @@ export async function fetchMonoCloudSubscription(credentials, options = {}) {
       links: nodes.map(shadowsocksLink),
       nodeCount: nodes.length,
       planCount: catalog.length,
+      account: {
+        checkedPlanCount: catalog.length,
+        maximumUsagePercent: bandwidth.length ? Math.max(...bandwidth.map(item => item.usagePercent ?? 0)) : null,
+        minimumResetDays: bandwidth.some(item => item.resetDays !== null)
+          ? Math.min(...bandwidth.filter(item => item.resetDays !== null).map(item => item.resetDays)) : null,
+      },
       baseHost: new URL(login.baseUrl).host,
     };
   } finally {

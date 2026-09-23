@@ -111,6 +111,7 @@ async function refreshMonoCloud() {
     });
     prepared.routing = routed.routing;
     prepared.authentication = { mode: "account_login", planCount: result.planCount };
+    prepared.account = result.account;
     return commitLastGood(cacheDirectory, "monocloud", prepared.yaml, prepared);
   } finally {
     credential.email = "";

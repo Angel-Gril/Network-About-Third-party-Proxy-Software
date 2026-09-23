@@ -17,7 +17,8 @@ test("account flow sends the desktop protocol headers and converts complete Shad
     const body = init.body instanceof URLSearchParams ? Object.fromEntries(init.body) : null;
     calls.push({ url: String(url), headers: init.headers, body });
     if (String(url).endsWith("/oauth/token")) return response({ access_token: tokenMarker });
-    if (String(url).endsWith("/api/service")) return response([{ id: 7, plan: { type: "shadowsocks" } }]);
+    if (String(url).endsWith("/api/service")) return response([{ id: 7, expire_date: "2099-01-01", plan: { type: "shadowsocks" } }]);
+    if (String(url).endsWith("/api/bandwidth/7")) return response({ upload: 10, download: 20, allowance: 100, reset_days: 4 });
     if (String(url).endsWith("/api/shadowsocks/7")) return response([node]);
     throw new Error("Unexpected request");
   };
@@ -32,6 +33,7 @@ test("account flow sends the desktop protocol headers and converts complete Shad
   assert.equal(calls[0].headers["X-Client-Version"], "1.0.1");
   assert.deepEqual(Object.keys(calls[0].body).sort(), ["client_id", "client_secret", "grant_type", "password", "username"]);
   assert.equal(calls[1].headers.Authorization, `Bearer ${tokenMarker}`);
+  assert.deepEqual(result.account, { checkedPlanCount: 1, maximumUsagePercent: 30, minimumResetDays: 4 });
 });
 
 test("login tries the alternate official API but stops the batch on 429", async () => {
@@ -65,6 +67,30 @@ test("unsupported plans and malformed nodes fail without exposing upstream value
   await assert.rejects(fetchMonoCloudSubscription({email:"owner@example.invalid",password:secretMarker},{fetchImpl:base}),
     error => /Unsupported MonoCloud plan type/.test(error.message) && !error.message.includes(secretMarker));
   assert.throws(() => convertShadowsocksNodes([{ ...node, password: "" }]), /incomplete connection fields/);
+});
+
+test("expired or exhausted plans stop before stale node credentials are exported", async () => {
+  for (const mode of ["expired", "exhausted"]) {
+    const calls = [];
+    const fetchImpl = async (url) => {
+      const pathname = new URL(url).pathname;
+      calls.push(pathname);
+      if (pathname.endsWith("/oauth/token")) return response({ access_token: tokenMarker });
+      if (pathname.endsWith("/api/service")) return response([{
+        id: 7, expire_date: mode === "expired" ? "2020-01-01" : "2099-01-01",
+        plan: { type: "shadowsocks" },
+      }]);
+      if (pathname.endsWith("/api/bandwidth/7")) {
+        return response({ upload: 60, download: 50, allowance: 100, reset_days: 4 });
+      }
+      if (pathname.endsWith("/api/shadowsocks/7")) return response([node]);
+      throw new Error("Unexpected request");
+    };
+    await assert.rejects(fetchMonoCloudSubscription(
+      { email: "owner@example.invalid", password: secretMarker }, { fetchImpl, nowMs: Date.parse("2026-01-01") }),
+    error => new RegExp(mode === "expired" ? "expired" : "allowance").test(error.message));
+    assert.equal(calls.includes("/api/shadowsocks/7"), false);
+  }
 });
 
 test("SS links retain cipher, password and display name", () => {

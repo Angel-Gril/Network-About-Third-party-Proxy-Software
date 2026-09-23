@@ -74,7 +74,7 @@ Windows `3.1.8+2026071612` 已改变这一链路：订阅请求使用 `securityn
 
 已分析 Windows 样本 SHA-256 为 `2a082057e660602e6b61e977287f4b461bbc472427c558e8fb1b6f872bc455f1`，使用 Wails UI 与 Mihomo 核心。认证和参数链为 `POST /oauth/token` → `GET /api/service` → `GET /api/{plan.type}/{service.id}`；认证请求同时带桌面客户端标识与版本头。客户端内置 ID/secret 是通用协议常量，账号、访问 token 和节点密码仍是私密数据。
 
-实际账号仅确认 `shadowsocks` 套餐，节点响应逐条提供 `hostname`、`port`、`encryption` 和 `password`，可以无损转换为 Mihomo `ss` 节点和 `ss://` 链接。套餐目录中的 `vpn` 分支尚未取得授权样本验证，不能从文件名 `Clash_tls` 或客户端模板推断其标准协议；当前实现明确拒绝该类型。
+实际账号仅确认 `shadowsocks` 套餐，节点响应逐条提供 `hostname`、`port`、`encryption` 和 `password`，可以无损转换为 Mihomo `ss` 节点、`ss://` 链接和 v2rayN Base64 订阅。读取节点前用套餐截止时间及 `/api/bandwidth/<service-record-id>` 的 `upload`、`download`、`allowance` 判断权益；账号仍能登录、节点接口仍返回旧参数，不表示流量或套餐仍可用。套餐目录中的 `vpn` 分支尚未取得授权样本验证，不能从文件名 `Clash_tls` 或客户端模板推断其标准协议；当前实现明确拒绝该类型。
 
 客户端目录中的 `Clash_ss`、`Clash_tls` 是含 `{tunnel}` 与 `{Clash-rule}` 的模板，不是已经填入凭据的订阅。在线接口才是完整节点来源。系统 TUN 返回 Fake-IP 时，用独立 DNS 复核真实 A/AAAA，但不把查询结果写死进节点。
 
