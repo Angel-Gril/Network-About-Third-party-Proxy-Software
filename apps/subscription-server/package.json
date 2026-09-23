@@ -7,7 +7,7 @@
     "node": ">=22"
   },
   "scripts": {
-    "check": "node --check src/app.mjs && node --check src/server.mjs && node --check src/refresh-provider.mjs && node --check src/rules.mjs && node --check src/providers.mjs && node --check src/validate-subscription.mjs && node --check src/routing-template.mjs && node --check scripts/verify_release.mjs",
+    "check": "node --check src/app.mjs && node --check src/server.mjs && node --check src/refresh-provider.mjs && node --check src/scheduled-refresh.mjs && node --check src/refresh-settings.mjs && node --check src/subscription-formats.mjs && node --check src/rules.mjs && node --check src/providers.mjs && node --check src/validate-subscription.mjs && node --check src/routing-template.mjs && node --check scripts/verify_release.mjs",
     "test": "node --test"
   },
   "dependencies": {

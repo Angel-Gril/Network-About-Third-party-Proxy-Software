@@ -42,6 +42,7 @@
 2. 在隔离候选目录准备新源码，运行 `npm ci --omit=dev --ignore-scripts`，创建飞跃虚拟环境并安装 `./providers/leapvpn`。先验证模块可导入、服务源码可检查、路径可读，随后按已有授权范围做预发布验收。
 3. 在维护窗口暂停所有 provider 刷新 timer，等待正在执行的刷新结束。切换源码后更新下表中的路径，保留原缓存、读取 token、账号文件和设备状态。
 4. 以 `subsvc` 核对所需文件权限，运行 `nginx -t`、带单元路径的 `systemd-analyze verify` 与 `systemctl daemon-reload`，再重启 HTTP 服务并恢复 timer。
+5. 使用可配置刷新版本时，创建 `/var/lib/private-subscription/state/subscription-server`，设置为 `subsvc:subsvc` 0700；安装新 timer 后确认它们每五分钟检查设置，而实际 provider 刷新仍使用管理页保存的间隔。
 5. 验证健康接口、各 provider 原读取链接、错误和跨 provider token、未认证管理入口、刷新与 timer；将最终 HTTPS 配置和已验收候选按哈希绑定。
 
 | 项目 | 新配置 |

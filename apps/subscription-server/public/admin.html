@@ -13,11 +13,20 @@
     main { max-width: 1440px; margin: 0 auto; padding: 20px 24px 32px; }
     .toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
     h2 { margin: 0; font-size: 15px; font-weight: 600; letter-spacing: 0; }
-    button, .button { min-height: 34px; padding: 0 13px; border: 1px solid #9aa6b2; border-radius: 4px; background: #fff; color: #17202a; cursor: pointer; font: inherit; font-weight: 600; }
+    button, .button, select, input { min-height: 34px; border: 1px solid #9aa6b2; border-radius: 4px; background: #fff; color: #17202a; font: inherit; }
+    button, .button { padding: 0 13px; cursor: pointer; font-weight: 600; }
+    select, input { padding: 0 8px; }
+    button:focus-visible, .button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid #1677a3; outline-offset: 2px; }
     .button { display: inline-flex; align-items: center; text-decoration: none; }
     button:hover, .button:hover { background: #eaf0f5; }
     button:disabled { cursor: wait; opacity: .55; }
     .actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+    .format-select { width: 148px; }
+    .schedule-control { display: grid; grid-template-columns: auto 68px 82px auto; align-items: center; gap: 6px; min-width: 312px; }
+    .schedule-control input[type="checkbox"] { width: 17px; min-height: 17px; margin: 0; accent-color: #08783e; }
+    .schedule-control input[type="number"] { width: 68px; }
+    .schedule-note { grid-column: 1 / -1; color: #52606d; font-size: 11px; min-height: 15px; }
+    .message { min-height: 18px; margin: -6px 0 10px; color: #52606d; font-size: 12px; }
     .copy-button { min-width: 108px; }
     .reset-button { width: 128px; border-color: #c86b63; color: #9f241b; }
     .reset-button:hover { background: #fff0ee; }
@@ -27,14 +36,22 @@
     .ok { color: #08783e; font-weight: 600; }
     .bad { color: #b42318; font-weight: 600; }
     @media (max-width: 700px) {
+      html, body { overflow-x: hidden; }
       main { padding: 14px 10px 24px; }
       header { padding: 0 12px; }
       table, tbody, tr, td { display: block; }
       table { border: 0; }
       thead { display: none; }
       tr { border: 1px solid #d8dee4; background: #fff; }
-      td { display: grid; grid-template-columns: 88px minmax(0, 1fr); align-items: center; gap: 10px; padding: 9px 10px; font-size: 12px; overflow-wrap: anywhere; }
+      td { display: grid; grid-template-columns: 88px minmax(0, 1fr); align-items: center; gap: 10px; min-width: 0; padding: 9px 10px; font-size: 12px; overflow-wrap: anywhere; }
       td::before { content: attr(data-label); color: #52606d; font-weight: 600; }
+      .schedule-control { width: calc(100vw - 140px); min-width: 0; grid-template-columns: 18px minmax(52px, .7fr) minmax(74px, 1fr); }
+      .schedule-control > * { min-width: 0; max-width: 100%; }
+      .schedule-control button { padding: 0 8px; }
+      .schedule-control button[data-save-schedule] { grid-column: 2 / 4; width: 100%; }
+      .format-select { width: min(100%, 180px); }
+      .actions { width: calc(100vw - 140px); min-width: 0; max-width: 100%; }
+      .actions button, .actions .button { min-width: 0; width: auto; padding: 0 8px; }
     }
   </style>
 </head>
@@ -43,22 +60,41 @@
   <main>
     <section>
       <div class="toolbar"><h2>Providers</h2><button id="reload">Reload</button></div>
+      <div id="message" class="message" role="status" aria-live="polite"></div>
       <table>
-        <thead><tr><th>Provider</th><th>Status</th><th>Updated</th><th>Nodes</th><th>Action</th></tr></thead>
+        <thead><tr><th>Provider</th><th>Status</th><th>Updated</th><th>Nodes</th><th>Format</th><th>Automatic refresh</th><th>Actions</th></tr></thead>
         <tbody id="providers"></tbody>
       </table>
     </section>
   </main>
   <script>
     const body = document.querySelector('#providers');
+    const message = document.querySelector('#message');
     const names = { flybird: 'FlyBird', leapvpn: 'LeapVPN', monocloud: 'MonoCloud' };
+    const formats = { clash: { label: 'Clash / Mihomo', extension: 'yaml' }, v2rayn: { label: 'v2rayN / v2rayNG', extension: 'b64' }, uri: { label: 'URI list', extension: 'txt' } };
+    const selectedFormats = {};
     const safe = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
-    async function load() {
+    const displayTime = (value) => value ? new Date(value).toLocaleString() : '-';
+    function intervalParts(minutes) {
+      if (minutes % 1440 === 0) return { value: minutes / 1440, unit: 'days' };
+      if (minutes % 60 === 0) return { value: minutes / 60, unit: 'hours' };
+      return { value: minutes, unit: 'minutes' };
+    }
+    function formatOptions(selected) {
+      return Object.entries(formats).map(([key, value]) => `<option value="${key}"${key === selected ? ' selected' : ''}>${value.label}</option>`).join('');
+    }
+    async function load(force = false) {
+      if (!force && document.querySelector('.schedule-control :focus')) return;
+      document.querySelectorAll('[data-format]').forEach((element) => { selectedFormats[element.dataset.format] = element.value; });
       const response = await fetch('/admin/api/status', { cache: 'no-store' });
       const data = await response.json();
       body.innerHTML = Object.entries(data.providers).map(([key, value]) => {
         const status = value.available && !value.lastError ? '<span class="ok">Ready</span>' : `<span class="bad">${safe(value.lastError || 'Unavailable')}</span>`;
-        return `<tr><td data-label="Provider">${names[key]}</td><td data-label="Status">${status}</td><td data-label="Updated">${safe(value.updatedAt || '-')}</td><td data-label="Nodes">${safe(value.proxyCount || 0)}</td><td data-label="Action"><div class="actions"><button class="copy-button" data-copy-link="${key}">Copy link</button><button class="reset-button" data-reset-link="${key}">Reset link</button><a class="button" href="/admin/download/${key}.yaml">Download</a><button data-provider="${key}">Refresh</button></div></td></tr>`;
+        const refresh = value.refresh || { enabled: true, intervalMinutes: 360, nextAt: null };
+        const interval = intervalParts(refresh.intervalMinutes);
+        const selected = selectedFormats[key] || 'clash';
+        const next = refresh.enabled ? `Next: ${displayTime(refresh.nextAt)}` : 'Automatic refresh is off';
+        return `<tr><td data-label="Provider">${names[key]}</td><td data-label="Status">${status}</td><td data-label="Updated">${safe(displayTime(value.updatedAt))}</td><td data-label="Nodes">${safe(value.proxyCount || 0)}</td><td data-label="Format"><select class="format-select" data-format="${key}" aria-label="${names[key]} subscription format">${formatOptions(selected)}</select></td><td data-label="Auto refresh"><div class="schedule-control" data-schedule="${key}"><input type="checkbox" data-enabled aria-label="Enable ${names[key]} automatic refresh"${refresh.enabled ? ' checked' : ''}><input type="number" data-interval min="1" max="43200" value="${interval.value}" aria-label="Refresh interval"><select data-unit aria-label="Refresh interval unit"><option value="minutes"${interval.unit === 'minutes' ? ' selected' : ''}>Minutes</option><option value="hours"${interval.unit === 'hours' ? ' selected' : ''}>Hours</option><option value="days"${interval.unit === 'days' ? ' selected' : ''}>Days</option></select><button data-save-schedule="${key}">Save</button><span class="schedule-note">${safe(next)}</span></div></td><td data-label="Actions"><div class="actions"><button class="copy-button" data-copy-link="${key}">Copy link</button><button class="reset-button" data-reset-link="${key}">Reset link</button><a class="button" data-download="${key}" href="/admin/download/${key}.${formats[selected].extension}">Download</a><button data-provider="${key}">Refresh</button></div></td></tr>`;
       }).join('');
     }
     async function copyText(value) {
@@ -77,13 +113,39 @@
       if (!copied) throw new Error('Clipboard is unavailable');
     }
     body.addEventListener('click', async (event) => {
+      const saveButton = event.target.closest('button[data-save-schedule]');
+      if (saveButton) {
+        const provider = saveButton.dataset.saveSchedule;
+        const control = saveButton.closest('[data-schedule]');
+        const amount = Number(control.querySelector('[data-interval]').value);
+        const unit = control.querySelector('[data-unit]').value;
+        const multiplier = { minutes: 1, hours: 60, days: 1440 }[unit];
+        const intervalMinutes = amount * multiplier;
+        saveButton.disabled = true;
+        try {
+          const response = await fetch(`/admin/api/refresh-settings/${encodeURIComponent(provider)}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', 'X-Admin-Action': 'private-subscription-admin' },
+            body: JSON.stringify({ enabled: control.querySelector('[data-enabled]').checked, intervalMinutes }),
+          });
+          if (!response.ok) throw new Error('Refresh settings could not be saved');
+          message.textContent = `${names[provider]} refresh settings saved`;
+          await load(true);
+        } catch {
+          message.textContent = 'Refresh settings could not be saved';
+        } finally {
+          saveButton.disabled = false;
+        }
+        return;
+      }
       const resetButton = event.target.closest('button[data-reset-link]');
       if (resetButton) {
         const provider = resetButton.dataset.resetLink;
+        const format = selectedFormats[provider] || document.querySelector(`[data-format="${provider}"]`).value;
         if (!window.confirm(`Reset the ${names[provider]} subscription link? Its current link will stop working immediately.`)) return;
         resetButton.disabled = true;
         try {
-          const response = await fetch(`/admin/api/reset-subscription-url?provider=${encodeURIComponent(provider)}`, {
+          const response = await fetch(`/admin/api/reset-subscription-url?provider=${encodeURIComponent(provider)}&format=${encodeURIComponent(format)}`, {
             method: 'POST',
             headers: { 'X-Admin-Action': 'private-subscription-admin' },
           });
@@ -108,9 +170,10 @@
       const copyButton = event.target.closest('button[data-copy-link]');
       if (copyButton) {
         const provider = copyButton.dataset.copyLink;
+        const format = selectedFormats[provider] || document.querySelector(`[data-format="${provider}"]`).value;
         copyButton.disabled = true;
         try {
-          const response = await fetch(`/admin/api/subscription-url?provider=${encodeURIComponent(provider)}`, { cache: 'no-store' });
+          const response = await fetch(`/admin/api/subscription-url?provider=${encodeURIComponent(provider)}&format=${encodeURIComponent(format)}`, { cache: 'no-store' });
           if (!response.ok) throw new Error('Subscription URL is unavailable');
           const data = await response.json();
           await copyText(data.url);
@@ -132,11 +195,20 @@
         method: 'POST',
         headers: { 'X-Admin-Action': 'private-subscription-admin' },
       });
-      setTimeout(load, 1200);
+      message.textContent = `${names[button.dataset.provider]} refresh started`;
+      setTimeout(() => load(true), 1200);
     });
-    document.querySelector('#reload').addEventListener('click', load);
+    body.addEventListener('change', (event) => {
+      const select = event.target.closest('select[data-format]');
+      if (!select) return;
+      const provider = select.dataset.format;
+      selectedFormats[provider] = select.value;
+      const download = document.querySelector(`[data-download="${provider}"]`);
+      download.href = `/admin/download/${provider}.${formats[select.value].extension}`;
+    });
+    document.querySelector('#reload').addEventListener('click', () => load(true));
     load();
-    setInterval(load, 10000);
+    setInterval(load, 30000);
   </script>
 </body>
 </html>

@@ -20,6 +20,7 @@ Node.js 服务从最后有效缓存分发 FlyingBird、LeapVPN 和 MonoCloud 订
 /etc/private-subscription/leapvpn-account.json     ← 私有账号文件
 /etc/private-subscription/monocloud.json            ← 私有账号文件
 /var/lib/private-subscription/state/leapvpn/       ← 持久化设备状态
+/var/lib/private-subscription/state/subscription-server/ ← 自动刷新设置
 /var/lib/private-subscription/cache/               ← 最后有效配置与规则数据
 /var/lib/private-subscription/read-tokens/         ← 三家独立读取 token
 ```
@@ -48,7 +49,7 @@ providers/leapvpn/.venv/bin/python -m pip install ./providers/leapvpn
 
 自动续期使用 `LEAPVPN_CREDENTIAL_FILE` 和 `LEAPVPN_AUTH_STATE_FILE`。使用已有会话文件时，取消这两项并设置 `LEAPVPN_SESSION_FILE`，服务改为调用 `-m leapvpn.export --fetch-all`。只有需要自定义命令文件时才设置可选的 `LEAPVPN_EXPORT_SCRIPT`；它会替换模块入口，并接收对应模式的参数。默认初始化不设置此覆盖项。
 
-MonoCloud 使用 `MONOCLOUD_CREDENTIAL_FILE` 中的 `email` 与 `password` 每次登录，不持久化访问 token。当前只发布已验证的 Shadowsocks 套餐；账号出现 VPN 或未知套餐时刷新失败并保留最后有效缓存。
+MonoCloud 使用 `MONOCLOUD_CREDENTIAL_FILE` 中的 `email` 与 `password` 每次登录，不持久化访问 token。当前只发布已验证的 Shadowsocks 套餐；套餐过期、流量用尽、账号出现 VPN 或未知套餐时刷新失败并保留最后有效缓存。
 
 ## 刷新与分流
 
@@ -59,7 +60,17 @@ systemctl start private-subscription-refresh@monocloud.service
 systemctl enable --now private-subscription.service private-subscription-refresh-flybird.timer private-subscription-refresh-leapvpn.timer private-subscription-refresh-monocloud.timer
 ```
 
-timer 模板每六小时执行，时间按服务器时区。管理页面 `/admin/` 也提供逐 provider 的复制、下载、刷新和显式重置功能。读取链接形如 `/s/<READ_TOKEN>/monocloud.yaml`。
+timer 每五分钟检查一次逐 provider 设置，默认启用且间隔六小时。管理页面 `/admin/` 可独立开关 FlyBird、LeapVPN 和 MonoCloud 的自动刷新，并设置 5 分钟到 30 天的间隔；手动刷新不受开关影响。设置原子保存到 `REFRESH_SETTINGS_FILE`，默认位于 `/var/lib/private-subscription/state/subscription-server/refresh-settings.json`。
+
+每家使用同一个读取 token 提供三种格式；重置任一格式的链接会同时撤销该 provider 的全部旧格式链接：
+
+| 格式 | 路径 | 用途 |
+| --- | --- | --- |
+| Clash YAML | `/s/<READ_TOKEN>/monocloud.yaml` | Clash Verge、Mihomo |
+| URI 列表 | `/s/<READ_TOKEN>/monocloud.txt` | `ss://`、`vless://` 导入 |
+| Base64 | `/s/<READ_TOKEN>/monocloud.b64` | v2rayN、v2rayNG 订阅 |
+
+管理页的格式选择同时作用于复制和下载。Base64 内容是 UTF-8 URI 列表的标准 Base64 编码；遇到当前转换器不支持的节点协议时返回 422，不发布不完整子集。
 
 LeapVPN 与 MonoCloud 导出后应用 FlyingBird 的共享分流 renderer，保持节点连接参数，检查策略引用，再发布缓存。默认含 15 个策略组和 19 条规则，前两个内网后缀为公开占位示例；GeoX 更新周期为 24 小时。实际节点数随上游目录变化。
 
@@ -71,7 +82,7 @@ FlyBird 入口恢复只在新入口无真实 DNS、旧入口仍有效且连接�
 
 升级时不重跑初始化。按明确文件清单准备完整仓库快照，保存原应用、缓存和配置，更新根 npm 依赖与虚拟环境中的飞跃包；在隔离目录以真实服务用户运行预发布，再切换应用并验证正式刷新。旧布局的服务路径和环境配置对应关系见 [迁移说明](../../docs/MIGRATION.md)。
 
-至少检查健康接口、三家正确读取 token、错误及跨 provider token、未认证管理页面、原链接有效性和三个 timer。将最终 HTTPS 文件与已验证候选按哈希绑定。失败时恢复备份并重新验证；不静默重置 token 或设备。
+升级现有安装时先创建 `/var/lib/private-subscription/state/subscription-server`，归属 `subsvc:subsvc`、权限 0700，再安装新的服务与 timer 单元。至少检查健康接口、三家三种格式的正确读取 token、错误及跨 provider token、未认证管理页面、原 `.yaml` 链接有效性、刷新设置持久化和三个 timer。将最终 HTTPS YAML 与已验证候选按哈希绑定。失败时恢复备份并重新验证；不静默重置 token 或设备。
 
 ### 绑定配置与实际测试记录
 

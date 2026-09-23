@@ -7,6 +7,8 @@ import { createHandler } from "./app.mjs";
 import { createRuleLoader } from "./rules.mjs";
 import { createTokenStore } from "./token-store.mjs";
 import { PROVIDERS } from "./providers.mjs";
+import { createRefreshSettingsStore, defaultRefreshSettingsPath } from "./refresh-settings.mjs";
+import { SUBSCRIPTION_FORMATS } from "./subscription-formats.mjs";
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const cacheDirectory = process.env.SUBSCRIPTION_CACHE_DIR || path.join(projectRoot, "data", "cache");
@@ -16,6 +18,8 @@ const listenHost = process.env.LISTEN_HOST || "127.0.0.1";
 const listenPort = Number(process.env.LISTEN_PORT || 3100);
 const refreshScript = path.join(projectRoot, "src", "refresh-provider.mjs");
 const running = new Set();
+const refreshSettings = createRefreshSettingsStore(process.env.REFRESH_SETTINGS_FILE ||
+  defaultRefreshSettingsPath(cacheDirectory));
 
 if (!/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/.test(publicDomain)) {
   throw new Error("PUBLIC_DOMAIN must be a valid DNS name");
@@ -28,7 +32,8 @@ const tokenStores = new Map([
   ["leapvpn", await createTokenStore(process.env.LEAPVPN_READ_TOKEN_FILE)],
   ["monocloud", await createTokenStore(process.env.MONOCLOUD_READ_TOKEN_FILE)],
 ]);
-const buildSubscriptionUrl = (provider, token) => `https://${publicDomain}/s/${token}/${provider}.yaml`;
+const buildSubscriptionUrl = (provider, token, format = "clash") =>
+  `https://${publicDomain}/s/${token}/${provider}.${SUBSCRIPTION_FORMATS[format].extension}`;
 
 async function triggerRefresh(provider) {
   if (!PROVIDERS.has(provider)) return { ok: false, started: false, error: "Unknown provider" };
@@ -57,11 +62,14 @@ async function triggerRefresh(provider) {
 const handler = createHandler({
   cacheDirectory,
   getReadToken: (provider) => tokenStores.get(provider).get(),
-  getSubscriptionUrl: (provider) => buildSubscriptionUrl(provider, tokenStores.get(provider).get()),
-  rotateSubscriptionUrl: async (provider) => buildSubscriptionUrl(provider, await tokenStores.get(provider).rotate()),
+  getSubscriptionUrl: (provider, format) => buildSubscriptionUrl(provider, tokenStores.get(provider).get(), format),
+  rotateSubscriptionUrl: async (provider, format) =>
+    buildSubscriptionUrl(provider, await tokenStores.get(provider).rotate(), format),
   adminHtml,
   triggerRefresh,
   loadRuleAsset,
+  getRefreshSettings: refreshSettings.get,
+  updateRefreshSettings: refreshSettings.update,
 });
 const server = http.createServer((request, response) => handler(request, response));
 server.requestTimeout = 15_000;

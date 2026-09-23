@@ -13,6 +13,7 @@ for existing in \
   /var/lib/private-subscription/read-tokens/leapvpn \
   /var/lib/private-subscription/read-tokens/monocloud \
   /var/lib/private-subscription/state/leapvpn/session.json \
+  /var/lib/private-subscription/state/subscription-server/refresh-settings.json \
   /etc/nginx/private-subscription.htpasswd
 do
   if test -e "$existing" || test -L "$existing"; then
@@ -32,11 +33,13 @@ install -d -o subsvc -g subsvc -m 0750 /var/lib/private-subscription
 install -d -o subsvc -g subsvc -m 0700 /var/lib/private-subscription/cache
 install -d -o subsvc -g subsvc -m 0700 /var/lib/private-subscription/read-tokens
 install -d -o subsvc -g subsvc -m 0700 /var/lib/private-subscription/state/leapvpn
+install -d -o subsvc -g subsvc -m 0700 /var/lib/private-subscription/state/subscription-server
 {
   printf 'PUBLIC_DOMAIN=sub.example.com\n'
   printf 'LISTEN_HOST=127.0.0.1\n'
   printf 'LISTEN_PORT=3100\n'
   printf 'SUBSCRIPTION_CACHE_DIR=/var/lib/private-subscription/cache\n'
+  printf 'REFRESH_SETTINGS_FILE=/var/lib/private-subscription/state/subscription-server/refresh-settings.json\n'
   printf 'SUBSCRIPTION_READ_TOKEN_FILE=/var/lib/private-subscription/read-tokens/flybird\n'
   printf 'LEAPVPN_READ_TOKEN_FILE=/var/lib/private-subscription/read-tokens/leapvpn\n'
   printf 'MONOCLOUD_READ_TOKEN_FILE=/var/lib/private-subscription/read-tokens/monocloud\n'

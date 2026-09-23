@@ -2,6 +2,10 @@
 
 ## 未发布
 
+- 私有订阅服务器新增 Clash YAML、明文 URI 与 v2rayN Base64 三种读取格式；原 `.yaml` 链接和 provider token 保持有效。
+- 管理页新增逐 provider 自动刷新开关和 5 分钟至 30 天的间隔设置，systemd 每五分钟检查一次到期状态，默认仍为六小时。
+- MonoCloud 导出在读取节点前检查套餐截止时间和流量额度；流量用尽或套餐过期时明确失败并保留最后有效缓存，本地 CLI 增加 v2rayN Base64 文件。
+
 - 新增 MonoCloud 1.0.1 账号认证和 Shadowsocks 套餐导出，提供 Clash、`ss://`、备用 API、限流停止与错误脱敏回归。
 - 私有订阅服务器新增 MonoCloud 独立凭据、读取 token、定时刷新、最后有效缓存和管理入口；未验证的 VPN 套餐明确拒绝发布。
 

@@ -1,9 +1,10 @@
 [Unit]
-Description=Refresh LeapVPN private subscription every six hours
+Description=Evaluate the LeapVPN private subscription refresh schedule every five minutes
 
 [Timer]
-OnCalendar=*-*-* 04,10,16,22:15:00
-RandomizedDelaySec=10m
+OnCalendar=*-*-* *:01/5:00
+RandomizedDelaySec=20s
+AccuracySec=15s
 Persistent=true
 Unit=private-subscription-refresh@leapvpn.service
 

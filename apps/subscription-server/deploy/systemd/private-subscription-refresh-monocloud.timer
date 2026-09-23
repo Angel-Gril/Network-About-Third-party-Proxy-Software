@@ -1,9 +1,10 @@
 [Unit]
-Description=Refresh MonoCloud private subscription every six hours
+Description=Evaluate the MonoCloud private subscription refresh schedule every five minutes
 
 [Timer]
-OnCalendar=*-*-* 05,11,17,23:15:00
-RandomizedDelaySec=10m
+OnCalendar=*-*-* *:02/5:00
+RandomizedDelaySec=20s
+AccuracySec=15s
 Persistent=true
 Unit=private-subscription-refresh@monocloud.service
 

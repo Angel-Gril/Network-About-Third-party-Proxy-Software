@@ -22,7 +22,7 @@ ProtectKernelModules=true
 ProtectControlGroups=true
 RestrictSUIDSGID=true
 LockPersonality=true
-ReadWritePaths=/var/lib/private-subscription/cache /var/lib/private-subscription/read-tokens /var/lib/private-subscription/state/leapvpn
+ReadWritePaths=/var/lib/private-subscription/cache /var/lib/private-subscription/read-tokens /var/lib/private-subscription/state/leapvpn /var/lib/private-subscription/state/subscription-server
 
 [Install]
 WantedBy=multi-user.target

@@ -1,9 +1,10 @@
 [Unit]
-Description=Refresh FlyBird private subscription every six hours
+Description=Evaluate the FlyBird private subscription refresh schedule every five minutes
 
 [Timer]
-OnCalendar=*-*-* 03,09,15,21:15:00
-RandomizedDelaySec=15m
+OnCalendar=*-*-* *:00/5:00
+RandomizedDelaySec=20s
+AccuracySec=15s
 Persistent=true
 Unit=private-subscription-refresh@flybird.service
 

@@ -37,6 +37,7 @@ htpasswd() { printf 'htpasswd\n' >> "$CALLS_LOG"; return 94; }
                              '/var/lib/private-subscription/read-tokens/flybird',
                              '/var/lib/private-subscription/read-tokens/leapvpn',
                              '/var/lib/private-subscription/read-tokens/monocloud',
+                             '/var/lib/private-subscription/state/subscription-server/refresh-settings.json',
                              '/etc/nginx/private-subscription.htpasswd'):
                 with self.subTest(existing=existing):
                     trace.write_text('')
@@ -45,6 +46,18 @@ htpasswd() { printf 'htpasswd\n' >> "$CALLS_LOG"; return 94; }
                         capture_output=True, text=True, timeout=10)
                     self.assertEqual(result.returncode, 1, result.stderr)
                     self.assertEqual(trace.read_text(), '')
+
+    def test_systemd_units_use_the_configurable_scheduler_and_writable_state(self):
+        systemd = Path(__file__).resolve().parents[1] / 'deploy/systemd'
+        service = (systemd / 'private-subscription-refresh@.service').read_text()
+        web = (systemd / 'private-subscription.service').read_text()
+        self.assertIn('src/scheduled-refresh.mjs %i', service)
+        self.assertIn('/var/lib/private-subscription/state/subscription-server', service)
+        self.assertIn('/var/lib/private-subscription/state/subscription-server', web)
+        for name in ('flybird', 'leapvpn', 'monocloud'):
+            timer = (systemd / f'private-subscription-refresh-{name}.timer').read_text()
+            self.assertIn('/5:00', timer)
+            self.assertIn(f'Unit=private-subscription-refresh@{name}.service', timer)
 
 
 if __name__ == '__main__':

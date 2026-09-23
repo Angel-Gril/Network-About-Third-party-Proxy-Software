@@ -34,7 +34,7 @@ docs/                      架构、开发和迁移说明
 
 - `@proxy-toolkit/flybird` 是飞鸟 JavaScript 实现的唯一 npm 包；本地 PowerShell 实现在同一提供者目录中。
 - Worker 应用只提供部署入口，导入飞鸟包，不复制它的代码。
-- 订阅服务导入飞鸟与 MonoCloud 包，调用飞跃导出器，并负责验证、缓存和读取 token。它不再按文件路径导入另一个应用。
+- 订阅服务导入飞鸟与 MonoCloud 包，调用飞跃导出器，并负责验证、缓存、格式转换、读取 token 与可配置刷新调度。它不再按文件路径导入另一个应用。
 - `leapvpn` 使用标准 Python src 布局，通过 pip 安装后以 `python -m leapvpn.export` 等模块入口运行。
 - `@proxy-toolkit/monocloud` 是 MonoCloud 的唯一认证与转换实现，本地 CLI 和订阅服务共同调用。
 - skill 总结分析和验证方法，不持有另一份提取算法。
