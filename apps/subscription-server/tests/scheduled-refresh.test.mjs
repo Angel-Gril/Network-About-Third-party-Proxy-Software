@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { runScheduledRefresh } from "../src/scheduled-refresh.mjs";
+import { isMainModule, runScheduledRefresh } from "../src/scheduled-refresh.mjs";
 
 async function fixture(settings, metadata = null) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(),"scheduled-refresh-"));
@@ -55,4 +55,19 @@ test("a failed refresh is retried on the short failure backoff instead of the no
     assert.equal(result.ok,false);
     assert.equal(calls,1);
   } finally { await fs.rm(f.root,{recursive:true,force:true}); }
+});
+
+test("the scheduler recognizes a symlinked current-release entrypoint", () => {
+  const links = new Map([
+    ["/opt/private-subscription/current/apps/subscription-server/src/scheduled-refresh.mjs", "/opt/private-subscription/releases/example/source/apps/subscription-server/src/scheduled-refresh.mjs"],
+    ["/opt/private-subscription/releases/example/source/apps/subscription-server/src/scheduled-refresh.mjs", "/opt/private-subscription/releases/example/source/apps/subscription-server/src/scheduled-refresh.mjs"],
+  ]);
+  const resolvePath = value => links.get(value) || value;
+  const urlToPath = value => new URL(value).pathname;
+  assert.equal(isMainModule("/opt/private-subscription/current/apps/subscription-server/src/scheduled-refresh.mjs",
+    "file:///opt/private-subscription/releases/example/source/apps/subscription-server/src/scheduled-refresh.mjs",
+    resolvePath, urlToPath), true);
+  assert.equal(isMainModule("/opt/private-subscription/current/apps/subscription-server/src/other.mjs",
+    "file:///opt/private-subscription/releases/example/source/apps/subscription-server/src/scheduled-refresh.mjs",
+    resolvePath, urlToPath), false);
 });
