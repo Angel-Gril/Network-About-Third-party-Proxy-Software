@@ -52,7 +52,8 @@ async function refreshFlyBird() {
         const yaml = await response.text();
         if (!response.ok) throw new Error(`FlyBird returned HTTP ${response.status}`);
         const prepared = await prepareSubscription(yaml, {
-          minimum: Number(process.env.FLYBIRD_MIN_PROXIES || 1), previousYaml, allowServerRecovery: true,
+          minimum: Number(process.env.FLYBIRD_MIN_PROXIES || 1), previousYaml,
+          allowServerRecovery: true, allowProxyResolver: true,
         });
         return commitLastGood(cacheDirectory, "flybird", prepared.yaml, prepared);
       } catch (error) {

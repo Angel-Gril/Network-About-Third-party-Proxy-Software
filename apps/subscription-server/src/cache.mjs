@@ -50,6 +50,7 @@ export async function commitLastGood(cacheDirectory, provider, yaml, details = {
     proxyCount: Number(details.proxyCount || 0),
     validatedHostCount: Number(details.validatedHostCount || 0),
     recoveredServerCount: Number(details.recoveredServerCount || 0),
+    delegatedHostCount: Number(details.delegatedHostCount || 0),
     lastError: null,
   };
   if (details.authentication) metadata.authentication = details.authentication;

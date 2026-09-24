@@ -38,6 +38,20 @@ function recoverableIdentity(proxy) {
   return JSON.stringify(stable(identity));
 }
 
+function proxyResolverHosts(config) {
+  const values = config?.dns?.["proxy-server-nameserver"];
+  if (!Array.isArray(values)) return [];
+  const hosts = [];
+  for (const value of values) {
+    try {
+      const url = new URL(String(value).split("#", 1)[0]);
+      if (url.protocol !== "https:" || url.username || url.password || !url.hostname) return [];
+      hosts.push(url.hostname);
+    } catch { return []; }
+  }
+  return [...new Set(hosts)];
+}
+
 export async function prepareSubscription(text, options = {}) {
   const config = parseConfig(text, options.minimum || 1);
   const lookup = options.lookup || ((host) => dns.lookup(host, { all: true }));
@@ -67,8 +81,14 @@ export async function prepareSubscription(text, options = {}) {
   }
   let recoveredServerCount = 0;
   const unresolved = new Set();
+  const resolverHosts = options.allowProxyResolver ? proxyResolverHosts(config) : [];
+  const proxyResolverReady = resolverHosts.length >= 2 &&
+    (await Promise.all(resolverHosts.map(resolves))).filter(Boolean).length >= 2;
   for (const proxy of config.proxies) {
     if (await resolves(proxy.server)) continue;
+    if (proxyResolverReady && !isIP(proxy.server)) {
+      continue;
+    }
     const key = options.allowServerRecovery ? recoverableIdentity(proxy) : null;
     for (const prior of key ? byIdentity.get(key) || [] : []) {
       if (await resolves(prior.server)) {
@@ -85,5 +105,8 @@ export async function prepareSubscription(text, options = {}) {
     proxyCount: config.proxies.length,
     validatedHostCount: new Set(config.proxies.map(proxy => proxy.server)).size,
     recoveredServerCount,
+    delegatedHostCount: new Set(config.proxies
+      .filter(proxy => proxyResolverReady && !isIP(proxy.server))
+      .map(proxy => proxy.server)).size,
   };
 }

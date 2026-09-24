@@ -60,3 +60,40 @@ test("accepts reachable VLESS WebSocket configurations without entry recovery", 
   assert.equal(result.proxyCount, 1);
   assert.equal(result.recoveredServerCount, 0);
 });
+
+test("accepts an unresolved FlyBird entry only through multiple reachable HTTPS proxy resolvers", async () => {
+  const routed = YAML.parse(config());
+  routed.dns = { "proxy-server-nameserver": [
+    "https://resolver-one.example.invalid/api-v2",
+    "https://resolver-two.example.invalid/api-v2",
+  ] };
+  const result = await prepareSubscription(YAML.stringify(routed), {
+    allowProxyResolver: true,
+    lookup: async host => {
+      if (host === "retired.example.invalid") throw Object.assign(new Error("missing"), { code:"ENOTFOUND" });
+      return [{ address:"203.0.113.8", family:4 }];
+    },
+  });
+  assert.equal(result.proxyCount, 1);
+  assert.equal(result.delegatedHostCount, 1);
+  assert.equal(YAML.parse(result.yaml).proxies[0].server, "retired.example.invalid");
+});
+
+test("does not delegate DNS to one resolver, non-HTTPS resolvers or unavailable resolver hosts", async () => {
+  for (const resolvers of [
+    ["https://one.example.invalid/api-v2"],
+    ["http://one.example.invalid/api-v2", "https://two.example.invalid/api-v2"],
+    ["https://one.example.invalid/api-v2", "https://missing.example.invalid/api-v2"],
+  ]) {
+    const routed=YAML.parse(config());routed.dns={"proxy-server-nameserver":resolvers};
+    await assert.rejects(prepareSubscription(YAML.stringify(routed), {
+      allowProxyResolver:true,
+      lookup:async host => {
+        if (host === "retired.example.invalid" || host === "missing.example.invalid") {
+          throw Object.assign(new Error("missing"),{code:"ENOTFOUND"});
+        }
+        return [{address:"203.0.113.8",family:4}];
+      },
+    }), /DNS validation/);
+  }
+});
