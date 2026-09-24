@@ -3,11 +3,18 @@ import { atomicWrite, readJson } from "./cache.mjs";
 import { PROVIDERS } from "./providers.mjs";
 
 export const DEFAULT_REFRESH_INTERVAL_MINUTES = 360;
+export const DEFAULT_FAILURE_RETRY_MINUTES = 5;
 export const MIN_REFRESH_INTERVAL_MINUTES = 5;
 export const MAX_REFRESH_INTERVAL_MINUTES = 43_200;
+export const MIN_FAILURE_RETRY_MINUTES = 1;
+export const MAX_FAILURE_RETRY_MINUTES = 360;
 
 function defaultProviderSettings() {
-  return { enabled: true, intervalMinutes: DEFAULT_REFRESH_INTERVAL_MINUTES };
+  return {
+    enabled: true,
+    intervalMinutes: DEFAULT_REFRESH_INTERVAL_MINUTES,
+    retryMinutes: DEFAULT_FAILURE_RETRY_MINUTES,
+  };
 }
 
 function normalizeProviderSettings(value) {
@@ -17,7 +24,10 @@ function normalizeProviderSettings(value) {
   const interval = Number(value.intervalMinutes);
   const intervalMinutes = Number.isInteger(interval) && interval >= MIN_REFRESH_INTERVAL_MINUTES &&
     interval <= MAX_REFRESH_INTERVAL_MINUTES ? interval : fallback.intervalMinutes;
-  return { enabled, intervalMinutes };
+  const retry = Number(value.retryMinutes);
+  const retryMinutes = Number.isInteger(retry) && retry >= MIN_FAILURE_RETRY_MINUTES &&
+    retry <= MAX_FAILURE_RETRY_MINUTES ? retry : fallback.retryMinutes;
+  return { enabled, intervalMinutes, retryMinutes };
 }
 
 function normalizeDocument(value) {
@@ -32,11 +42,13 @@ export function defaultRefreshSettingsPath(cacheDirectory) {
 
 export function refreshTiming(metadata, settings, nowMs = Date.now()) {
   const value = normalizeProviderSettings(settings);
-  const attempts = [metadata?.updatedAt, metadata?.failedAt]
-    .map(item => Date.parse(item || ""))
-    .filter(Number.isFinite);
-  const lastAttemptMs = attempts.length ? Math.max(...attempts) : null;
-  const nextAtMs = lastAttemptMs === null ? nowMs : lastAttemptMs + value.intervalMinutes * 60_000;
+  const updatedAtMs = Date.parse(metadata?.updatedAt || "");
+  const failedAtMs = Date.parse(metadata?.failedAt || "");
+  const hasFailureAfterSuccess = Number.isFinite(failedAtMs) &&
+    (!Number.isFinite(updatedAtMs) || failedAtMs > updatedAtMs);
+  const nextAtMs = hasFailureAfterSuccess
+    ? failedAtMs + value.retryMinutes * 60_000
+    : Number.isFinite(updatedAtMs) ? updatedAtMs + value.intervalMinutes * 60_000 : nowMs;
   return {
     ...value,
     due: value.enabled && nextAtMs <= nowMs,

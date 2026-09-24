@@ -42,3 +42,17 @@ test("scheduled refresh runs a due provider and propagates its status", async ()
     assert.equal(selected,"monocloud");
   } finally { await fs.rm(f.root,{recursive:true,force:true}); }
 });
+
+test("a failed refresh is retried on the short failure backoff instead of the normal interval", async () => {
+  const f=await fixture({enabled:true,intervalMinutes:360},{
+    updatedAt:"2026-09-24T05:00:00Z", failedAt:"2026-09-24T11:54:00Z",
+  });
+  try {
+    let calls=0;
+    const result=await runScheduledRefresh("monocloud",{cacheDirectory:f.cache,settingsFile:f.settingsFile,
+      nowMs:Date.parse("2026-09-24T12:00:00Z"),runner:()=>{calls+=1;return 1;}});
+    assert.equal(result.skipped,false);
+    assert.equal(result.ok,false);
+    assert.equal(calls,1);
+  } finally { await fs.rm(f.root,{recursive:true,force:true}); }
+});

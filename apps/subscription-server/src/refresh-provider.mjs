@@ -16,6 +16,12 @@ const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "
 const cacheDirectory = process.env.SUBSCRIPTION_CACHE_DIR || path.join(projectRoot, "data", "cache");
 
 const runFile = promisify(execFile);
+const sleep = (milliseconds) => new Promise(resolve => setTimeout(resolve, milliseconds));
+
+function boundedInteger(value, fallback, minimum, maximum) {
+  const number = Number(value);
+  return Number.isInteger(number) && number >= minimum && number <= maximum ? number : fallback;
+}
 
 async function readCredential(filePath) {
   const value = JSON.parse(await fs.readFile(filePath, "utf8"));
@@ -28,21 +34,36 @@ async function refreshFlyBird() {
   try {
     const domain = process.env.PUBLIC_DOMAIN;
     const internalKey = "internal-refresh-key";
-    const response = await handleRequest(new Request(`https://${domain}/sub?key=${internalKey}`), {
-      ACCESS_KEY: internalKey,
-      FLYBIRD_EMAIL: credential.email,
-      FLYBIRD_PASSWORD: credential.password,
-    });
-    const yaml = await response.text();
-    if (!response.ok) throw new Error(`FlyBird returned HTTP ${response.status}`);
     let previousYaml = null;
     const previousPath = process.env.FLYBIRD_RECOVERY_FILE || path.join(cacheDirectory, "flybird.yaml");
     try { previousYaml = await fs.readFile(previousPath, "utf8"); }
     catch (error) { if (error.code !== "ENOENT") throw error; }
-    const prepared = await prepareSubscription(yaml, {
-      minimum: Number(process.env.FLYBIRD_MIN_PROXIES || 1), previousYaml, allowServerRecovery: true,
-    });
-    return commitLastGood(cacheDirectory, "flybird", prepared.yaml, prepared);
+    const attempts = boundedInteger(process.env.FLYBIRD_DNS_RETRY_ATTEMPTS, 3, 1, 6);
+    const delayMs = boundedInteger(process.env.FLYBIRD_DNS_RETRY_DELAY_MS, 2000, 100, 30000);
+    let lastError;
+    for (let attempt = 1; attempt <= attempts; attempt += 1) {
+      try {
+        // Fetch again on every DNS failure so a rotated upstream hostname is detected automatically.
+        const response = await handleRequest(new Request(`https://${domain}/sub?key=${internalKey}`), {
+          ACCESS_KEY: internalKey,
+          FLYBIRD_EMAIL: credential.email,
+          FLYBIRD_PASSWORD: credential.password,
+        });
+        const yaml = await response.text();
+        if (!response.ok) throw new Error(`FlyBird returned HTTP ${response.status}`);
+        const prepared = await prepareSubscription(yaml, {
+          minimum: Number(process.env.FLYBIRD_MIN_PROXIES || 1), previousYaml, allowServerRecovery: true,
+        });
+        return commitLastGood(cacheDirectory, "flybird", prepared.yaml, prepared);
+      } catch (error) {
+        lastError = error;
+        const message = String(error?.message || error);
+        const dnsFailure = /failed DNS validation/i.test(message);
+        if (!dnsFailure || attempt === attempts) throw error;
+        await sleep(delayMs);
+      }
+    }
+    throw lastError;
   } finally {
     credential.email = "";
     credential.password = "";

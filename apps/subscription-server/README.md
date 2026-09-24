@@ -60,7 +60,7 @@ systemctl start private-subscription-refresh@monocloud.service
 systemctl enable --now private-subscription.service private-subscription-refresh-flybird.timer private-subscription-refresh-leapvpn.timer private-subscription-refresh-monocloud.timer
 ```
 
-timer 每五分钟检查一次逐 provider 设置，默认启用且间隔六小时。管理页面 `/admin/` 可独立开关 FlyBird、LeapVPN 和 MonoCloud 的自动刷新，并设置 5 分钟到 30 天的间隔；手动刷新不受开关影响。设置原子保存到 `REFRESH_SETTINGS_FILE`，默认位于 `/var/lib/private-subscription/state/subscription-server/refresh-settings.json`。
+timer 每五分钟检查一次逐 provider 设置，默认启用且成功刷新间隔六小时。管理页面 `/admin/` 可独立开关 FlyBird、LeapVPN 和 MonoCloud 的自动刷新，并设置 5 分钟到 30 天的成功刷新间隔；手动刷新不受开关影响。刷新失败后使用 5 分钟短退避重试，不把失败时间推迟到下一个六小时周期。设置原子保存到 `REFRESH_SETTINGS_FILE`，默认位于 `/var/lib/private-subscription/state/subscription-server/refresh-settings.json`。
 
 每家使用同一个读取 token 提供三种格式；重置任一格式的链接会同时撤销该 provider 的全部旧格式链接：
 
@@ -74,7 +74,7 @@ timer 每五分钟检查一次逐 provider 设置，默认启用且间隔六小�
 
 LeapVPN 与 MonoCloud 导出后应用 FlyingBird 的共享分流 renderer，保持节点连接参数，检查策略引用，再发布缓存。默认含 15 个策略组和 19 条规则，前两个内网后缀为公开占位示例；GeoX 更新周期为 24 小时。实际节点数随上游目录变化。
 
-FlyBird 入口恢复只在新入口无真实 DNS、旧入口仍有效且连接身份匹配时替换 server。失败保留最后有效缓存；DNS 正常也不表示每个出口都可用。
+FlyBird 每次刷新都会重新读取上游入口；新入口遇到 DNS 校验失败时短暂重试并再次拉取，最多 3 次。只有新配置的入口全部通过 DNS 校验才发布；失败保留最后有效缓存。DNS 正常也不表示每个出口都可用。
 
 订阅 URI 含读取 token，因此 Nginx 的 HTTP 过渡配置、重定向入口和 HTTPS 订阅路径关闭相应请求日志；订阅路径也关闭会带出完整 URI 的 upstream error 日志。故障诊断使用服务状态、脱敏刷新错误和健康接口。
 

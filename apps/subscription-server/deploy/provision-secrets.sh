@@ -52,6 +52,8 @@ install -d -o subsvc -g subsvc -m 0700 /var/lib/private-subscription/state/subsc
   printf 'LEAPVPN_MIN_PROXIES=1\n'
   printf 'FLYBIRD_CREDENTIAL_FILE=/etc/private-subscription/flybird.json\n'
   printf 'FLYBIRD_MIN_PROXIES=1\n'
+  printf 'FLYBIRD_DNS_RETRY_ATTEMPTS=3\n'
+  printf 'FLYBIRD_DNS_RETRY_DELAY_MS=2000\n'
 } > /etc/private-subscription/service.env
 chown root:subsvc /etc/private-subscription/service.env
 chmod 0640 /etc/private-subscription/service.env

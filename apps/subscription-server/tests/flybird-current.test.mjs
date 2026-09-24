@@ -63,3 +63,46 @@ for (const tampered of [false, true]) {
     } finally { await fs.rm(root, { recursive: true, force: true }); }
   });
 }
+
+test("FlyBird refresh re-fetches a rotated hostname during the DNS retry window", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "flybird-dns-retry-"));
+  try {
+    const cache = path.join(root, "cache");
+    await fs.mkdir(cache);
+    const previous = { proxies: [{ ...node, server: "203.0.113.8" }] };
+    await fs.writeFile(path.join(cache, "flybird.yaml"), JSON.stringify(previous));
+    const credentials = path.join(root, "credentials.json");
+    await fs.writeFile(credentials, JSON.stringify({ email: "owner@example.invalid", password: "synthetic-secret" }));
+    const calls = path.join(root, "dns-calls");
+    const mock = path.join(root, "upstream.mjs");
+    await fs.writeFile(mock, `import dns from "node:dns/promises";
+import fs from "node:fs";
+let calls = 0;
+dns.lookup = async () => {
+  calls += 1;
+  fs.writeFileSync(${JSON.stringify(calls)}, String(calls));
+  if (calls < 2) { const error = new Error("synthetic DNS miss"); error.code = "ENOTFOUND"; throw error; }
+  return [{ address: "203.0.113.8", family: 4 }];
+};
+globalThis.fetch = async (url) => {
+  const path = new URL(url).pathname;
+  if (path.endsWith("/passport/auth/login")) return Response.json({status:"success",data:{token:"synthetic-token",auth_data:"synthetic-auth"}});
+  if (path.endsWith("/user/getSubscribe")) return Response.json({status:"success",data:{}});
+  if (path.endsWith("/client/subscribe")) return new Response(${JSON.stringify(`proxies:\n  - ${JSON.stringify({...node, server:"rotated.example.invalid"})}\n`)});
+  throw new Error("Unexpected upstream request");
+};`);
+    // The mock writes its lookup count to a path supplied through the current directory.
+    const mockText = await fs.readFile(mock, "utf8");
+    await fs.writeFile(mock, mockText.replace(`fs.writeFileSync(${JSON.stringify(calls)}, String(calls));`,
+      `fs.writeFileSync(process.env.DNS_CALL_FILE, String(calls));`));
+    const environment = Object.fromEntries(Object.entries(process.env).filter(([key]) => !/^(?:FLYBIRD|LEAPVPN)_/.test(key)));
+    const result = spawnSync(process.execPath, ["--import", pathToFileURL(mock).href, refreshScript, "flybird"], {
+      cwd: root, env: { ...environment, SUBSCRIPTION_CACHE_DIR: cache, FLYBIRD_CREDENTIAL_FILE: credentials,
+        FLYBIRD_DNS_RETRY_ATTEMPTS: "2", FLYBIRD_DNS_RETRY_DELAY_MS: "1", DNS_CALL_FILE: calls,
+        PUBLIC_DOMAIN: "sub.example.invalid" }, encoding: "utf8", timeout: 10000,
+    });
+    assert.equal(result.status, 0, `${result.stderr}; dnsCalls=${await fs.readFile(calls, "utf8").catch(() => "missing")}`);
+    assert.equal(Number(await fs.readFile(calls, "utf8")) >= 2, true);
+    assert.equal(JSON.parse(await fs.readFile(path.join(cache, "flybird.json"))).lastError, null);
+  } finally { await fs.rm(root, { recursive: true, force: true }); }
+});
