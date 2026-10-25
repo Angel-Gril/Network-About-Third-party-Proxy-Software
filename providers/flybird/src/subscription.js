@@ -11,11 +11,13 @@ const CLASH_SUB_URL_CANDIDATES = [
 ];
 
 const LOGIN_HEADERS = {
-  "User-Agent": "NetFlow/v3.0.3 clash-verge Platform/windows",
+  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0.0.0 Safari/537.36",
   Accept: "application/json",
   "x-auth-token": "K9rM2bA7vP5wN8x",
   "x-app-package-name": "atlas",
   "x-client-platform": "windows",
+  Origin: "https://fbesa.apiv2.a047.com",
+  Referer: "https://fbesa.apiv2.a047.com/",
 };
 
 const USER_INFO_HEADERS = LOGIN_HEADERS;
@@ -295,7 +297,13 @@ export async function loginFlyBird(email, password) {
   );
   const text = await resp.text();
   if (!resp.ok) {
+    if (resp.status === 403 && /<html|Alibaba Cloud ESA|WAF/i.test(text)) {
+      throw new HttpError(503, "login upstream requires interactive ESA verification");
+    }
     throw new HttpError(502, `login upstream ${resp.status}`);
+  }
+  if (/Alibaba Cloud ESA|WAF_NC_H5_WRAPPER|slide verification/i.test(text)) {
+    throw new HttpError(503, "login upstream requires interactive ESA verification");
   }
 
   let data;

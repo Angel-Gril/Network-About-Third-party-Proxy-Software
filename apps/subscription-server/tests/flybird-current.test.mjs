@@ -106,3 +106,32 @@ globalThis.fetch = async (url) => {
     assert.equal(JSON.parse(await fs.readFile(path.join(cache, "flybird.json"))).lastError, null);
   } finally { await fs.rm(root, { recursive: true, force: true }); }
 });
+
+test("FlyBird refresh accepts a saved subscription token without attempting account login", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "flybird-token-"));
+  try {
+    const cache = path.join(root, "cache");
+    await fs.mkdir(cache);
+    const credentials = path.join(root, "credentials.json");
+    await fs.writeFile(credentials, JSON.stringify({ token: "saved-subscription-token" }));
+    const mock = path.join(root, "upstream.mjs");
+    await fs.writeFile(mock, [
+      "globalThis.fetch = async (url, init = {}) => {",
+      ' const path = new URL(url).pathname;',
+      ' if (path.endsWith("/passport/auth/login")) throw new Error("login must not be called");',
+      ' if (path.endsWith("/client/subscribe")) {',
+      '  if (init.headers["User-Agent"] !== "securitynet/v3.1.8 clash-verge Platform/windows") return new Response("invalid token", {status:401});',
+      "  return new Response(" + JSON.stringify("proxies:\n  - " + JSON.stringify(node) + "\n") + ");",
+      " }",
+      ' throw new Error("Unexpected upstream request");',
+      "};",
+    ].join("\n"));
+    const environment = Object.fromEntries(Object.entries(process.env).filter(([key]) => !/^(?:FLYBIRD|LEAPVPN)_/.test(key)));
+    const result = spawnSync(process.execPath, ["--import", pathToFileURL(mock).href, refreshScript, "flybird"], {
+      cwd: root, env: { ...environment, SUBSCRIPTION_CACHE_DIR: cache, FLYBIRD_CREDENTIAL_FILE: credentials,
+        PUBLIC_DOMAIN: "sub.example.invalid" }, encoding: "utf8", timeout: 10000,
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(YAML.parse(await fs.readFile(path.join(cache, "flybird.yaml"), "utf8")).proxies, [node]);
+  } finally { await fs.rm(root, { recursive: true, force: true }); }
+});

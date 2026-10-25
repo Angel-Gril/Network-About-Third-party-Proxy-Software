@@ -25,6 +25,7 @@ function boundedInteger(value, fallback, minimum, maximum) {
 
 async function readCredential(filePath) {
   const value = JSON.parse(await fs.readFile(filePath, "utf8"));
+  if (value?.token) return { token: String(value.token).trim() };
   if (!value?.email || !value?.password) throw new Error("Credential file is incomplete");
   return value;
 }
@@ -46,11 +47,17 @@ async function refreshFlyBird() {
         // Fetch again on every DNS failure so a rotated upstream hostname is detected automatically.
         const response = await handleRequest(new Request(`https://${domain}/sub?key=${internalKey}`), {
           ACCESS_KEY: internalKey,
-          FLYBIRD_EMAIL: credential.email,
-          FLYBIRD_PASSWORD: credential.password,
+          ...(credential.token
+            ? { FLYBIRD_TOKEN: credential.token }
+            : { FLYBIRD_EMAIL: credential.email, FLYBIRD_PASSWORD: credential.password }),
         });
         const yaml = await response.text();
-        if (!response.ok) throw new Error(`FlyBird returned HTTP ${response.status}`);
+        if (!response.ok) {
+          const wafChallenge = /Alibaba Cloud ESA|WAF_NC_H5_WRAPPER|slide verification|interactive ESA verification/i.test(yaml);
+          throw new Error(wafChallenge
+            ? "FlyBird login requires interactive ESA verification; configure a subscription token"
+            : `FlyBird returned HTTP ${response.status}`);
+        }
         const prepared = await prepareSubscription(yaml, {
           minimum: Number(process.env.FLYBIRD_MIN_PROXIES || 1), previousYaml,
           allowServerRecovery: true, allowProxyResolver: true,
@@ -68,6 +75,7 @@ async function refreshFlyBird() {
   } finally {
     credential.email = "";
     credential.password = "";
+    credential.token = "";
   }
 }
 
