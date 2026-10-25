@@ -40,6 +40,8 @@ pwsh -NoProfile -File .\providers\flybird\src\export_client_state.ps1
 
 将 bundle 放在私有目录中，并通过受保护的管理通道传给订阅服务器。bundle 中的会话可能过期，重新登录后需要重新导出；不要把 bundle 提交到仓库或放进公开 Worker KV。
 
+运行时内存证据可以另存为 `apex-client-state/v1` fixture，记录当前 API/订阅域名和路径改写表。此类 fixture 只有路由证据，没有 `access_key`，只能用于离线解析和路由测试；不能传给刷新任务当作在线凭据。
+
 ## 文件与路径
 
 默认输出固定为仓库 `exports/flybird/`；显式相对输出路径以当前调用目录为准。脚本和模板按模块目录定位，因此从其他目录启动也能找到资源。

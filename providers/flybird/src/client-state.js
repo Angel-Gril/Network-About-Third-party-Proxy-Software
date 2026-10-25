@@ -106,6 +106,36 @@ export async function decodeClientStateBundle(bundle) {
   if (!bundle || typeof bundle !== "object") {
     throw new Error("client-state bundle must be an object");
   }
+  const runtimeOnly = bundle.format === "apex-client-state/v1"
+    || bundle.source === "runtime-memory";
+  if (runtimeOnly && !readBundleString(bundle, "apexProfileFileKeyV3", "profileKey")) {
+    const rawConfig = bundle.raw_config || {};
+    return {
+      format: String(bundle.format || "apex-client-state/v1"),
+      clientVersion: readBundleString(bundle, "clientVersion", "version")
+        || String(bundle.build?.version || ""),
+      capturedAt: readBundleString(bundle, "capturedAt", "captured_at_utc"),
+      subscriptionUrl: "",
+      subscriptionToken: "",
+      xboardToken: "",
+      runtimeOnly: true,
+      liveVerified: bundle.live_verified === true,
+      source: readBundleString(bundle, "source"),
+      pathMap: bundle.path_map || rawConfig.subscribe_path || {},
+      apexV2ApiDomains: readBundleArray(
+        bundle,
+        "apexV2ApiDomains",
+        "apiDomains",
+        "api_domains",
+      ).concat(readBundleArray(rawConfig, "domains")),
+      apexV2SubscribeDomains: readBundleArray(
+        bundle,
+        "apexV2SubscribeDomains",
+        "subscribeDomains",
+        "subscribe_domains",
+      ).concat(readBundleArray(rawConfig, "subscribe_domain")),
+    };
+  }
   const profileKey = readBundleString(
     bundle,
     "apexProfileFileKeyV3",

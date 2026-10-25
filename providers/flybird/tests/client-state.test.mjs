@@ -52,3 +52,21 @@ test("decodeClientStateBundle normalizes encrypted URL and token fields", async 
   assert.deepEqual(normalized.apexV2SubscribeDomains, ["https://sub.example.invalid"]);
 });
 
+test("decodeClientStateBundle preserves runtime-only routing evidence without treating it as credentials", async () => {
+  const normalized = await decodeClientStateBundle({
+    format: "apex-client-state/v1",
+    source: "runtime-memory",
+    live_verified: false,
+    build: { version: "7.2.3+1792857411" },
+    api_domains: ["https://api.example.invalid"],
+    subscribe_domains: ["https://sub.example.invalid"],
+    path_map: { "/api/v1/user/getSubscribe": "/v2/feed/access-token" },
+  });
+  assert.equal(normalized.runtimeOnly, true);
+  assert.equal(normalized.liveVerified, false);
+  assert.equal(normalized.subscriptionToken, "");
+  assert.deepEqual(normalized.apexV2ApiDomains, ["https://api.example.invalid"]);
+  assert.deepEqual(normalized.apexV2SubscribeDomains, ["https://sub.example.invalid"]);
+  assert.equal(normalized.pathMap["/api/v1/user/getSubscribe"], "/v2/feed/access-token");
+});
+
