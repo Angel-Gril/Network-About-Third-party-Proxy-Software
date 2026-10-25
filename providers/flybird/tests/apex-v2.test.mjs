@@ -7,6 +7,7 @@ import {
   loginApexV2,
   normalizeApexV2AccessCredential,
   normalizeApexV2Login,
+  downloadApexV2Subscription,
 } from "../src/apex-v2.js";
 
 test("Apex v2 normalizers preserve the session and access-key distinction", () => {
@@ -47,5 +48,24 @@ test("Apex v2 download URLs are built from access_key and current subscribe doma
     "https://sub.example.invalid/v2/feed/download?access_key=a%2Fb",
   ]);
   assert.throws(() => normalizeApexV2AccessCredential({ data: {} }), ApexV2Error);
+});
+
+test("Apex v2 download falls back across subscription domains and returns raw bytes", async () => {
+  const calls = [];
+  const result = await downloadApexV2Subscription({
+    accessKey: "access",
+    subscribeDomains: ["https://first.example.invalid", "https://second.example.invalid"],
+    fetchImpl: async (url) => {
+      calls.push(String(url));
+      if (calls.length === 1) return new Response("gone", { status: 404 });
+      return new Response(new Uint8Array([0x41, 0x50, 0x58, 0x53]), {
+        status: 200,
+        headers: { "Content-Type": "application/octet-stream" },
+      });
+    },
+  });
+  assert.equal(calls.length, 2);
+  assert.equal(result.status, 200);
+  assert.deepEqual([...result.body], [0x41, 0x50, 0x58, 0x53]);
 });
 

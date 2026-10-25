@@ -157,3 +157,38 @@ export function buildApexV2DownloadUrls(accessKey, subscribeDomains = DEFAULT_AP
     .map((domain) => `${domain}/v2/feed/download?access_key=${encodeURIComponent(key)}`);
 }
 
+export async function downloadApexV2Subscription(options = {}) {
+  const fetchImpl = options.fetchImpl || fetch;
+  const urls = buildApexV2DownloadUrls(options.accessKey, options.subscribeDomains);
+  const failures = [];
+  for (const url of urls) {
+    try {
+      const response = await fetchImpl(url, {
+        redirect: "error",
+        signal: AbortSignal.timeout(30_000),
+        headers: {
+          ...CLIENT_HEADERS,
+          ...(options.headers || {}),
+        },
+      });
+      const body = new Uint8Array(await response.arrayBuffer());
+      if (!response.ok) {
+        failures.push({ url, status: response.status, bodyLength: body.length });
+        continue;
+      }
+      return {
+        url,
+        status: response.status,
+        headers: Object.fromEntries(response.headers.entries()),
+        body,
+      };
+    } catch (error) {
+      failures.push({ url, error: error?.name || "request_failed" });
+    }
+  }
+  const status = failures.find((failure) => failure.status)?.status || null;
+  throw new ApexV2Error(`Apex v2 subscription download failed at ${failures.length} endpoint(s)`, {
+    status,
+  });
+}
+

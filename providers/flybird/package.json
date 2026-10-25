@@ -11,6 +11,7 @@
   "engines": { "node": ">=22" },
   "scripts": {
     "test": "node --test",
-    "check": "node --check src/subscription.js && node --check src/client-state.js && node --check src/apex-v2.js"
+    "check": "node --check src/subscription.js && node --check src/client-state.js && node --check src/apex-v2.js && node --check src/headless.mjs",
+    "headless": "node src/headless.mjs"
   }
 }
