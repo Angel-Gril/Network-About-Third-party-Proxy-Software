@@ -9,6 +9,10 @@ const CLASH_SUB_URL_CANDIDATES = [
   "https://fbapi.web.ak005.com/api/v1/client/subscribe?token={token}",
   "https://fbapi.web.ak005.com/api/v1/client/subscribe?flag=meta&token={token}",
 ];
+const APEX_V2_CLASH_SUB_URL_CANDIDATES = [
+  "https://fbaxsub.web.ak005.com/v2/feed/download?access_key={token}",
+  "https://fbaxsub.apiv2.a047.com/v2/feed/download?access_key={token}",
+];
 
 const LOGIN_HEADERS = {
   "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0.0.0 Safari/537.36",
@@ -382,6 +386,11 @@ function buildSubscriptionUrls(source, env = {}, hintedUrls = []) {
   }
   if (env.FLYBIRD_SUB_URL_TEMPLATE) {
     urls.push(formatSubscriptionUrl(env.FLYBIRD_SUB_URL_TEMPLATE, token));
+  }
+  if (env.FLYBIRD_APEX_V2 === "true" || env.FLYBIRD_APEX_V2 === true) {
+    for (const template of APEX_V2_CLASH_SUB_URL_CANDIDATES) {
+      urls.push(formatSubscriptionUrl(template, token));
+    }
   }
   for (const template of CLASH_SUB_URL_CANDIDATES) {
     urls.push(formatSubscriptionUrl(template, token));

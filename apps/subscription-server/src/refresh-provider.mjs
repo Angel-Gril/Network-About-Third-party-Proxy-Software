@@ -67,6 +67,7 @@ async function refreshFlyBird() {
               ...(credential.subscriptionUrl
                 ? { FLYBIRD_SUB_URL_TEMPLATE: credential.subscriptionUrl }
                 : {}),
+              FLYBIRD_APEX_V2: "true",
             }
             : { FLYBIRD_EMAIL: credential.email, FLYBIRD_PASSWORD: credential.password }),
         });

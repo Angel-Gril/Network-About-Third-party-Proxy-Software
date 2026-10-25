@@ -408,6 +408,31 @@ test("GET /sub can pull upstream Clash config directly from token query", async 
   }
 });
 
+test("GET /sub tries the Apex v2 access-key subscription endpoints for client-state tokens", async () => {
+  const originalFetch = globalThis.fetch;
+  const urls = [];
+  let subscriptionHeaders;
+  globalThis.fetch = async (url, init) => {
+    urls.push(String(url));
+    const value = String(url);
+    if (value.includes("/v2/feed/download")) subscriptionHeaders = init.headers;
+    if (value.includes("/v2/feed/download?access_key=token-1")) {
+      return new Response("proxies:\n  - {\"name\":\"v2\",\"type\":\"ss\",\"server\":\"edge.example\",\"port\":443,\"cipher\":\"aes-128-gcm\",\"password\":\"secret\"}\n");
+    }
+    return new Response("not found", { status: 404 });
+  };
+  try {
+    const response = await handleRequest(
+      new Request("https://worker.example/sub?key=abc&token=token-1"),
+      { ACCESS_KEY: "abc", FLYBIRD_APEX_V2: "true" },
+    );
+    assert.equal(response.status, 200);
+    assert.match(await response.text(), /name.*v2/);
+    assert.equal(urls[0], "https://fbaxsub.web.ak005.com/v2/feed/download?access_key=token-1");
+    assert.equal(subscriptionHeaders["User-Agent"], "securitynet/v3.1.8 clash-verge Platform/windows");
+  } finally { globalThis.fetch = originalFetch; }
+});
+
 test("GET /sub reports upstream WAF HTML instead of trying to parse it as a subscription", async () => {
   const restoreFetch = installFetchMock(async (url) => {
     const value = String(url);
