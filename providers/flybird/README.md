@@ -42,6 +42,24 @@ pwsh -NoProfile -File .\providers\flybird\src\export_client_state.ps1
 
 运行时内存证据可以另存为 `apex-client-state/v1` fixture，记录当前 API/订阅域名和路径改写表。此类 fixture 只有路由证据，没有 `access_key`，只能用于离线解析和路由测试；不能传给刷新任务当作在线凭据。
 
+## 无 GUI 的 v2 协议客户端
+
+服务器不需要运行 Flutter/GTK 客户端。Node.js 22+ 可以直接执行 v2 协议 CLI：
+
+```sh
+# 直接使用已经取得的 access_key
+node providers/flybird/src/headless.mjs \
+  --access-key "$FLYBIRD_ACCESS_KEY" \
+  --out /var/lib/private-subscription/flybird/raw
+
+# 或用已有的 xboard_token 换取 access_key
+node providers/flybird/src/headless.mjs \
+  --token "$FLYBIRD_XBOARD_TOKEN" \
+  --out /var/lib/private-subscription/flybird/raw
+```
+
+CLI 只负责登录态交换、订阅下载和保存原始响应；`raw_body.bin` 需要交给 APXS v2 解密器，再经过节点校验后发布。当前上游 v2 域名返回 404 时，CLI 会失败并保留调用方的最后有效缓存，不会把错误页面当成订阅。
+
 ## 文件与路径
 
 默认输出固定为仓库 `exports/flybird/`；显式相对输出路径以当前调用目录为准。脚本和模板按模块目录定位，因此从其他目录启动也能找到资源。
