@@ -5,6 +5,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import { handleRequest, enhanceMihomoConfig } from "@proxy-toolkit/flybird";
+import { decodeClientStateBundle } from "@proxy-toolkit/flybird/client-state";
 import { fetchMonoCloudSubscription } from "@proxy-toolkit/monocloud";
 import { commitLastGood, recordFailure } from "./cache.mjs";
 import { PROVIDERS } from "./providers.mjs";
@@ -30,8 +31,21 @@ async function readCredential(filePath) {
   return value;
 }
 
+async function readFlyBirdCredential() {
+  const clientStatePath = process.env.FLYBIRD_CLIENT_STATE_FILE;
+  if (!clientStatePath) return readCredential(process.env.FLYBIRD_CREDENTIAL_FILE);
+  const bundle = JSON.parse(await fs.readFile(clientStatePath, "utf8"));
+  const state = await decodeClientStateBundle(bundle);
+  return {
+    token: state.subscriptionToken,
+    subscriptionUrl: state.subscriptionUrl,
+    clientVersion: state.clientVersion,
+    xboardToken: state.xboardToken,
+  };
+}
+
 async function refreshFlyBird() {
-  const credential = await readCredential(process.env.FLYBIRD_CREDENTIAL_FILE);
+  const credential = await readFlyBirdCredential();
   try {
     const domain = process.env.PUBLIC_DOMAIN;
     const internalKey = "internal-refresh-key";
@@ -48,7 +62,12 @@ async function refreshFlyBird() {
         const response = await handleRequest(new Request(`https://${domain}/sub?key=${internalKey}`), {
           ACCESS_KEY: internalKey,
           ...(credential.token
-            ? { FLYBIRD_TOKEN: credential.token }
+            ? {
+              FLYBIRD_TOKEN: credential.token,
+              ...(credential.subscriptionUrl
+                ? { FLYBIRD_SUB_URL_TEMPLATE: credential.subscriptionUrl }
+                : {}),
+            }
             : { FLYBIRD_EMAIL: credential.email, FLYBIRD_PASSWORD: credential.password }),
         });
         const yaml = await response.text();
@@ -76,6 +95,8 @@ async function refreshFlyBird() {
     credential.email = "";
     credential.password = "";
     credential.token = "";
+    credential.subscriptionUrl = "";
+    credential.xboardToken = "";
   }
 }
 

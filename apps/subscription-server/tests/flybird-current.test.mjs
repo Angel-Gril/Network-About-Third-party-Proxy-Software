@@ -13,6 +13,16 @@ const node = { name: "synthetic", type: "vless", server: "203.0.113.8", port: 44
   uuid: "11111111-1111-4111-8111-111111111111", tls: true,
   servername: "tls.example", flow: "xtls-rprx-vision", network: "tcp", "skip-cert-verify": false };
 
+function encryptedApexUrl(plaintext) {
+  const key = Buffer.from("0123456789abcdef");
+  const nonce = Buffer.from("000102030405060708090a0b", "hex");
+  const cipher = createCipheriv("aes-128-gcm", key, nonce);
+  const ciphertext = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
+  return `apex-url-v2:${Buffer.concat([
+    Buffer.from("APEX\x02", "binary"), nonce, ciphertext, cipher.getAuthTag(),
+  ]).toString("base64")}`;
+}
+
 for (const tampered of [false, true]) {
   test(tampered ? "bad GCM tag preserves the last-good FlyBird cache" : "FlyBird refresh publishes authenticated current-client nodes", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "flybird-current-"));
@@ -133,5 +143,50 @@ test("FlyBird refresh accepts a saved subscription token without attempting acco
     });
     assert.equal(result.status, 0, result.stderr);
     assert.deepEqual(YAML.parse(await fs.readFile(path.join(cache, "flybird.yaml"), "utf8")).proxies, [node]);
+  } finally { await fs.rm(root, { recursive: true, force: true }); }
+});
+
+test("FlyBird refresh accepts a 7.2.x client-state bundle without account login", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "flybird-client-state-"));
+  try {
+    const cache = path.join(root, "cache");
+    await fs.mkdir(cache);
+    const credentials = path.join(root, "client-state.json");
+    const subscriptionUrl = "https://client.example.invalid/api/v1/client/subscribe?token=synthetic-token";
+    await fs.writeFile(credentials, JSON.stringify({
+      format: "flybird-client-state/v1",
+      clientVersion: "7.2.3",
+      apexProfileFileKeyV3: Buffer.from("0123456789abcdef").toString("base64"),
+      subscriptionUrl: encryptedApexUrl(subscriptionUrl),
+      subscriptionToken: encryptedApexUrl("synthetic-token"),
+      xboardToken: "synthetic-xboard-token",
+    }));
+    const mock = path.join(root, "upstream.mjs");
+    await fs.writeFile(mock, [
+      "globalThis.fetch = async (url, init = {}) => {",
+      ' const path = new URL(url).pathname;',
+      ' if (path.endsWith("/passport/auth/login")) throw new Error("login must not be called");',
+      ' if (path.endsWith("/client/subscribe")) {',
+      '  if (init.headers["User-Agent"] !== "securitynet/v3.1.8 clash-verge Platform/windows") return new Response("invalid token", {status:401});',
+      "  return new Response(" + JSON.stringify("proxies:\n  - " + JSON.stringify(node) + "\n") + ");",
+      ' }',
+      ' throw new Error("Unexpected upstream request");',
+      "};",
+    ].join("\n"));
+    const environment = Object.fromEntries(Object.entries(process.env).filter(([key]) => !/^(?:FLYBIRD|LEAPVPN)_/.test(key)));
+    const result = spawnSync(process.execPath, ["--import", pathToFileURL(mock).href, refreshScript, "flybird"], {
+      cwd: root,
+      env: {
+        ...environment,
+        SUBSCRIPTION_CACHE_DIR: cache,
+        FLYBIRD_CLIENT_STATE_FILE: credentials,
+        PUBLIC_DOMAIN: "sub.example.invalid",
+      },
+      encoding: "utf8",
+      timeout: 10000,
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(YAML.parse(await fs.readFile(path.join(cache, "flybird.yaml"), "utf8")).proxies, [node]);
+    assert.doesNotMatch(result.stdout + result.stderr, /synthetic-xboard-token|synthetic-token/);
   } finally { await fs.rm(root, { recursive: true, force: true }); }
 });

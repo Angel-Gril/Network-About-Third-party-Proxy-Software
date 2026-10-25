@@ -47,6 +47,14 @@ providers/leapvpn/.venv/bin/python -m pip install ./providers/leapvpn
 
 账户配置与 `service.env` 通常为 `root:subsvc 0640`；设备状态和 token 为 `subsvc:subsvc 0600`，状态目录为 0700。不要向公网暴露 Node 的 3100 端口。
 
+飞鸟 7.2.x 客户端可以在 Windows 官方客户端完成登录后导出客户端态 bundle，再由 Linux 服务直接使用订阅 token。将 bundle 放到私有路径（例如 `/etc/private-subscription/flybird-client-state.json`），设置：
+
+```sh
+FLYBIRD_CLIENT_STATE_FILE=/etc/private-subscription/flybird-client-state.json
+```
+
+设置该文件后，FlyBird 刷新会优先解开 `apex-url-v2` 字段并请求订阅接口，不调用账号密码登录。文件应归 `subsvc:subsvc`、权限 `0600`；bundle 过期或上游撤销会话时，需要在 Windows 客户端重新登录并重新导出。`FLYBIRD_CLIENT_STATE_FILE` 与 `FLYBIRD_CREDENTIAL_FILE` 二选一。
+
 自动续期使用 `LEAPVPN_CREDENTIAL_FILE` 和 `LEAPVPN_AUTH_STATE_FILE`。使用已有会话文件时，取消这两项并设置 `LEAPVPN_SESSION_FILE`，服务改为调用 `-m leapvpn.export --fetch-all`。只有需要自定义命令文件时才设置可选的 `LEAPVPN_EXPORT_SCRIPT`；它会替换模块入口，并接收对应模式的参数。默认初始化不设置此覆盖项。
 
 MonoCloud 使用 `MONOCLOUD_CREDENTIAL_FILE` 中的 `email` 与 `password` 每次登录，不持久化访问 token。当前只发布已验证的 Shadowsocks 套餐；套餐过期、流量用尽、账号出现 VPN 或未知套餐时刷新失败并保留最后有效缓存。

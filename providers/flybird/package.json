@@ -3,10 +3,13 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "exports": "./src/subscription.js",
+  "exports": {
+    ".": "./src/subscription.js",
+    "./client-state": "./src/client-state.js"
+  },
   "engines": { "node": ">=22" },
   "scripts": {
     "test": "node --test",
-    "check": "node --check src/subscription.js"
+    "check": "node --check src/subscription.js && node --check src/client-state.js"
   }
 }

@@ -28,6 +28,18 @@ python providers/flybird/src/export.py --email you@example.com --outdir exports/
 
 Python 入口仅转发参数到同目录的 PowerShell 导出器，不实现另一套解密逻辑。
 
+## 7.2.x 客户端态 bundle
+
+Windows 客户端 7.2.x 的账号登录会经过官方客户端完成，云端刷新不应重复调用密码登录接口。登录成功后，可以在同一台 Windows 机器上导出一个只供私有传输的客户端态 bundle：
+
+```powershell
+pwsh -NoProfile -File .\providers\flybird\src\export_client_state.ps1
+```
+
+脚本使用当前 Windows 用户的 DPAPI 解开客户端 secure storage，只写出 7.2.x 的 `apex-url-v2` 加密订阅字段、profile key 和会话摘要。原始 secure storage、账号密码和明文订阅不会写入 bundle。Linux/Node 刷新器通过 `@proxy-toolkit/flybird/client-state` 解开 `APEX 02` AES-128-GCM envelope，再用订阅 token 拉取配置；它不会执行 FlyingBird 密码登录。
+
+将 bundle 放在私有目录中，并通过受保护的管理通道传给订阅服务器。bundle 中的会话可能过期，重新登录后需要重新导出；不要把 bundle 提交到仓库或放进公开 Worker KV。
+
 ## 文件与路径
 
 默认输出固定为仓库 `exports/flybird/`；显式相对输出路径以当前调用目录为准。脚本和模板按模块目录定位，因此从其他目录启动也能找到资源。
