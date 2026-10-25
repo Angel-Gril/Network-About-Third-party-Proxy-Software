@@ -5,11 +5,12 @@
   "type": "module",
   "exports": {
     ".": "./src/subscription.js",
-    "./client-state": "./src/client-state.js"
+    "./client-state": "./src/client-state.js",
+    "./apex-v2": "./src/apex-v2.js"
   },
   "engines": { "node": ">=22" },
   "scripts": {
     "test": "node --test",
-    "check": "node --check src/subscription.js && node --check src/client-state.js"
+    "check": "node --check src/subscription.js && node --check src/client-state.js && node --check src/apex-v2.js"
   }
 }
