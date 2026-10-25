@@ -60,6 +60,15 @@ node providers/flybird/src/headless.mjs \
 
 CLI 只负责登录态交换、订阅下载和保存原始响应；`raw_body.bin` 需要交给 APXS v2 解密器，再经过节点校验后发布。当前上游 v2 域名返回 404 时，CLI 会失败并保留调用方的最后有效缓存，不会把错误页面当成订阅。
 
+如果服务器需要和官方 Dart/BoringSSL 的 TLS ClientHello 更接近，可以使用同目录的 Dart 版本：
+
+```sh
+dart compile exe providers/flybird/src/headless.dart -o /usr/local/bin/fb-headless
+fb-headless --access-key "$FLYBIRD_ACCESS_KEY" --out /var/lib/private-subscription/flybird/raw
+```
+
+Dart 版本关闭自动 gzip 解压，按原始字节写出 `raw_body.bin`，并保留 `content-encoding` 等响应头。`--insecure` 只用于受控诊断，不应放进正式定时任务。
+
 ## 文件与路径
 
 默认输出固定为仓库 `exports/flybird/`；显式相对输出路径以当前调用目录为准。脚本和模板按模块目录定位，因此从其他目录启动也能找到资源。
