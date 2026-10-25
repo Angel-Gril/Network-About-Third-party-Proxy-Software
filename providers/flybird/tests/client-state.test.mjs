@@ -42,10 +42,13 @@ test("decodeClientStateBundle normalizes encrypted URL and token fields", async 
     subscriptionUrl: encryptApexUrl(url),
     subscriptionToken: encryptApexUrl("synthetic"),
     xboardToken: "jwt-synthetic",
+    apexV2ApiDomains: ["https://api.example.invalid"],
+    apexV2SubscribeDomains: ["https://sub.example.invalid"],
   });
   assert.equal(normalized.clientVersion, "7.2.3");
   assert.equal(normalized.subscriptionUrl, url);
   assert.equal(normalized.subscriptionToken, "synthetic");
   assert.equal(normalized.xboardToken, "jwt-synthetic");
+  assert.deepEqual(normalized.apexV2SubscribeDomains, ["https://sub.example.invalid"]);
 });
 

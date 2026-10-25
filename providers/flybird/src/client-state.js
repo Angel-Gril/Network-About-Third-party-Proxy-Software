@@ -87,6 +87,17 @@ function readBundleString(bundle, ...names) {
   return "";
 }
 
+function readBundleArray(bundle, ...names) {
+  for (const name of names) {
+    if (Array.isArray(bundle?.[name])) {
+      return bundle[name]
+        .filter((value) => typeof value === "string" && value.trim())
+        .map((value) => value.trim());
+    }
+  }
+  return [];
+}
+
 /**
  * Normalize a Windows-exported client-state bundle for a Linux/Node refresher.
  * The bundle may contain encrypted apex-url-v2 values or already decoded values.
@@ -125,6 +136,12 @@ export async function decodeClientStateBundle(bundle) {
     subscriptionUrl,
     subscriptionToken,
     xboardToken: readBundleString(bundle, "xboardToken"),
+    apexV2ApiDomains: readBundleArray(bundle, "apexV2ApiDomains", "apiDomains"),
+    apexV2SubscribeDomains: readBundleArray(
+      bundle,
+      "apexV2SubscribeDomains",
+      "subscribeDomains",
+    ),
   };
 }
 

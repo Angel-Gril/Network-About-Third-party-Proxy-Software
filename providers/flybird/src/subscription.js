@@ -388,7 +388,14 @@ function buildSubscriptionUrls(source, env = {}, hintedUrls = []) {
     urls.push(formatSubscriptionUrl(env.FLYBIRD_SUB_URL_TEMPLATE, token));
   }
   if (env.FLYBIRD_APEX_V2 === "true" || env.FLYBIRD_APEX_V2 === true) {
-    for (const template of APEX_V2_CLASH_SUB_URL_CANDIDATES) {
+    const configuredDomains = String(env.FLYBIRD_APEX_V2_SUB_DOMAINS || "")
+      .split(",")
+      .map((value) => value.trim().replace(/\/$/, ""))
+      .filter(Boolean);
+    const templates = configuredDomains.length
+      ? configuredDomains.map((domain) => `${domain}/v2/feed/download?access_key={token}`)
+      : APEX_V2_CLASH_SUB_URL_CANDIDATES;
+    for (const template of templates) {
       urls.push(formatSubscriptionUrl(template, token));
     }
   }

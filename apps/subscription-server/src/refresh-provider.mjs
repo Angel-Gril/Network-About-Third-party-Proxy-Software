@@ -41,6 +41,8 @@ async function readFlyBirdCredential() {
     subscriptionUrl: state.subscriptionUrl,
     clientVersion: state.clientVersion,
     xboardToken: state.xboardToken,
+    apexV2ApiDomains: state.apexV2ApiDomains,
+    apexV2SubscribeDomains: state.apexV2SubscribeDomains,
   };
 }
 
@@ -68,6 +70,9 @@ async function refreshFlyBird() {
                 ? { FLYBIRD_SUB_URL_TEMPLATE: credential.subscriptionUrl }
                 : {}),
               FLYBIRD_APEX_V2: "true",
+              ...(credential.apexV2SubscribeDomains?.length
+                ? { FLYBIRD_APEX_V2_SUB_DOMAINS: credential.apexV2SubscribeDomains.join(",") }
+                : {}),
             }
             : { FLYBIRD_EMAIL: credential.email, FLYBIRD_PASSWORD: credential.password }),
         });

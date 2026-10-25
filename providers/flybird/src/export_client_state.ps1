@@ -1,7 +1,8 @@
 [CmdletBinding()]
 param(
     [string]$ClientDataDir = (Join-Path $env:APPDATA "com.fbapp.clients.apex\飞鸟-极速版"),
-    [string]$OutFile = (Join-Path $PSScriptRoot "../../../exports/flybird/flybird-client-state.json")
+    [string]$OutFile = (Join-Path $PSScriptRoot "../../../exports/flybird/flybird-client-state.json"),
+    [string]$RuntimeConfigPath = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -40,6 +41,17 @@ $profileKey = [string]$secure.apex_profile_file_key_v3
 $xboardToken = [string]$secure.xboard_token
 $subscription = $preferences.'flutter.xboard_domain_subscription' | ConvertFrom-Json
 $clientVersion = [string]$preferences.'flutter.apex_last_run_version'
+$apiDomains = @()
+$subscribeDomains = @()
+if ($RuntimeConfigPath) {
+    $runtimePath = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($RuntimeConfigPath)
+    if (-not (Test-Path -LiteralPath $runtimePath -PathType Leaf)) {
+        throw "Runtime config not found: $runtimePath"
+    }
+    $runtime = Get-Content -Raw -LiteralPath $runtimePath | ConvertFrom-Json
+    $apiDomains = @($runtime.domains | ForEach-Object { [string]$_ } | Where-Object { $_ })
+    $subscribeDomains = @($runtime.subscribe_domain | ForEach-Object { [string]$_ } | Where-Object { $_ })
+}
 
 if (-not $profileKey -or -not $subscription.subscribeUrl -or -not $subscription.token) {
     throw "FlyingBird client state is incomplete; log in with the official client first"
@@ -60,6 +72,8 @@ $bundle = [ordered]@{
     subscriptionUrl      = [string]$subscription.subscribeUrl
     subscriptionToken    = [string]$subscription.token
     xboardToken          = $xboardToken
+    apexV2ApiDomains     = $apiDomains
+    apexV2SubscribeDomains = $subscribeDomains
 }
 [System.IO.File]::WriteAllText(
     $outPath,
