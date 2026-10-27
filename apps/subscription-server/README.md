@@ -47,7 +47,7 @@ providers/leapvpn/.venv/bin/python -m pip install ./providers/leapvpn
 
 账户配置与 `service.env` 通常为 `root:subsvc 0640`；设备状态和 token 为 `subsvc:subsvc 0600`，状态目录为 0700。不要向公网暴露 Node 的 3100 端口。
 
-飞鸟 7.2.x 客户端可以在 Windows 官方客户端完成登录后导出客户端态 bundle，再由 Linux 服务直接使用订阅 token。将 bundle 放到私有路径（例如 `/etc/private-subscription/flybird-client-state.json`），设置：
+飞鸟纯协议刷新使用 API/subscription 两套 mTLS 身份，登录后换取 `access_key`，下载 APXS v2 并在发布前解密、校验节点，再调用 `src/render-flybird.mjs` 恢复完整的策略组和规则；不需要在 Linux 运行 Flutter/GTK/OpenWrt 客户端，也不需要读取进程内存。APXS v2 当前构建使用 AES-256-CTR；解密密钥通过私有部署配置提供，不能提交到仓库。证书和配置放在私有路径（例如 `/etc/apex-fetch/certs/` 和 `/etc/apex-fetch/config`），权限保持 600。
 
 ```sh
 FLYBIRD_CLIENT_STATE_FILE=/etc/private-subscription/flybird-client-state.json

@@ -39,11 +39,7 @@ function normalizeDomains(values, fallback) {
 async function requestJson(fetchImpl, url, init, label) {
   let response;
   try {
-    response = await fetchImpl(url, {
-      redirect: "error",
-      signal: AbortSignal.timeout(20_000),
-      ...init,
-    });
+    response = await fetchImpl(url, { redirect: "error", signal: AbortSignal.timeout(20_000), ...init });
   } catch {
     throw new ApexV2Error(`${label} request failed`);
   }
@@ -93,6 +89,7 @@ export function normalizeApexV2AccessCredential(payload) {
     signKey: firstString(data, ["sign_key", "signKey"]),
     keyId: firstString(data, ["key_id", "keyId"]),
     expiresAt: firstString(data, ["expires_at", "expiresAt", "expire_at", "expireAt"]),
+    subscribeUrl: firstString(data, ["subscribe_url", "subscribeUrl", "subscription_url", "url"]),
   };
 }
 
@@ -150,27 +147,46 @@ export async function getApexV2AccessCredential(options = {}) {
   throw new ApexV2Error(`Apex v2 access-token failed at ${failures.length} endpoint(s)`, { status });
 }
 
-export function buildApexV2DownloadUrls(accessKey, subscribeDomains = DEFAULT_APEX_V2_SUBSCRIBE_DOMAINS) {
+function directDownloadUrl(value, accessKey) {
+  const source = String(value || "").trim();
+  if (!source) return "";
+  if (source.includes("{access_key}") || source.includes("{token}")) {
+    const replaced = source
+      .replaceAll("{access_key}", encodeURIComponent(accessKey))
+      .replaceAll("{token}", encodeURIComponent(accessKey));
+    const parsed = new URL(replaced);
+    if (parsed.protocol !== "https:") throw new ApexV2Error("Apex v2 subscription URL must use https");
+    return parsed.toString();
+  }
+  const url = new URL(source);
+  if (url.protocol !== "https:") throw new ApexV2Error("Apex v2 subscription URL must use https");
+  if (url.searchParams.has("access_key")) url.searchParams.set("access_key", accessKey);
+  else if (url.searchParams.has("token")) url.searchParams.set("token", accessKey);
+  else url.searchParams.set("access_key", accessKey);
+  return url.toString();
+}
+
+export function buildApexV2DownloadUrls(accessKey, subscribeDomains = DEFAULT_APEX_V2_SUBSCRIBE_DOMAINS, subscribeUrl = "") {
   const key = String(accessKey || "").trim();
   if (!key) throw new ApexV2Error("Apex v2 access_key is required");
-  return normalizeDomains(subscribeDomains, DEFAULT_APEX_V2_SUBSCRIBE_DOMAINS)
-    .map((domain) => `${domain}/v2/feed/download?access_key=${encodeURIComponent(key)}`);
+  const direct = directDownloadUrl(subscribeUrl, key);
+  const fallback = normalizeDomains(subscribeDomains, DEFAULT_APEX_V2_SUBSCRIBE_DOMAINS)
+    .map((domain) => `${baseUrl(domain)}/v2/feed/download?access_key=${encodeURIComponent(key)}`);
+  return [...new Set([direct, ...fallback].filter(Boolean))];
 }
 
 export async function downloadApexV2Subscription(options = {}) {
   const fetchImpl = options.fetchImpl || fetch;
-  const urls = buildApexV2DownloadUrls(options.accessKey, options.subscribeDomains);
+  const urls = buildApexV2DownloadUrls(options.accessKey, options.subscribeDomains, options.subscribeUrl);
   const failures = [];
   for (const url of urls) {
     try {
-      const response = await fetchImpl(url, {
+      const init = {
         redirect: "error",
         signal: AbortSignal.timeout(30_000),
-        headers: {
-          ...CLIENT_HEADERS,
-          ...(options.headers || {}),
-        },
-      });
+        headers: { ...CLIENT_HEADERS, ...(options.headers || {}) },
+      };
+      const response = await fetchImpl(url, init);
       const body = new Uint8Array(await response.arrayBuffer());
       if (!response.ok) {
         failures.push({ url, status: response.status, bodyLength: body.length });

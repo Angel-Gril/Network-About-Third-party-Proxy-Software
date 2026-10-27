@@ -1,3 +1,16 @@
+import {
+  ApexV2Error,
+  DEFAULT_APEX_V2_API_DOMAINS,
+  DEFAULT_APEX_V2_SUBSCRIBE_DOMAINS,
+  downloadApexV2Subscription,
+  getApexV2AccessCredential,
+} from "./apex-v2.js";
+import {
+  decodeHttpContent,
+  decryptApxsV2,
+  verifyApxsV2SignatureDetailed,
+} from "./apxs-v2.js";
+
 const API_BASE_URL = "https://fbesa.apiv2.a047.com/api/v1";
 const LOGIN_URL = `${API_BASE_URL}/passport/auth/login`;
 const USER_SUB_INFO_URL = `${API_BASE_URL}/user/getSubscribe`;
@@ -468,6 +481,89 @@ async function downloadClashYamlFromUrl(url, env = {}) {
   );
   validateProxyEntries(extractProxiesBlock(clashYaml));
   return clashYaml;
+}
+
+function configuredDomains(value, fallback) {
+  const domains = String(value || "")
+    .split(",")
+    .map((item) => item.trim().replace(/\/$/, ""))
+    .filter(Boolean);
+  return domains.length ? domains : fallback;
+}
+
+async function downloadApexV2ClashYaml(credential, env = {}) {
+  let downloaded;
+  try {
+    downloaded = await downloadApexV2Subscription({
+      accessKey: credential.accessKey,
+      subscribeUrl: credential.subscribeUrl,
+      subscribeDomains: credential.subscribeDomains || configuredDomains(
+        env.FLYBIRD_APEX_V2_SUB_DOMAINS,
+        DEFAULT_APEX_V2_SUBSCRIBE_DOMAINS,
+      ),
+      headers: CLASH_HEADERS,
+    });
+  } catch (error) {
+    if (error instanceof ApexV2Error) {
+      throw new HttpError(502, error.status
+        ? `Apex v2 subscription upstream ${error.status}`
+        : "Apex v2 subscription upstream request failed");
+    }
+    throw error;
+  }
+  const httpBody = await decodeHttpContent(
+    downloaded.body,
+    downloaded.headers["content-encoding"] || "",
+  );
+  const rawText = dec.decode(httpBody.bytes);
+  let clashYaml;
+  let signatureVerified = false;
+  if (looksLikeMihomoYaml(rawText)) {
+    clashYaml = rawText;
+  } else {
+    clashYaml = await decryptApxsV2(httpBody.bytes, credential);
+  }
+  const signature = downloaded.headers["apex-sub-sign-v2"]
+    || downloaded.headers["x-apex-signature"]
+    || downloaded.headers["apex-signature"]
+    || "";
+  let signatureDetails = { ok: null, scope: null, encoding: null, over: null };
+  if (signature && credential.signKey) {
+    signatureDetails = {
+      ...(await verifyApxsV2SignatureDetailed(
+        httpBody.bytes,
+        signature,
+        credential.signKey,
+        enc.encode(clashYaml),
+      )),
+      over: "logical",
+    };
+    if (!signatureDetails.ok && httpBody.compressed) {
+      signatureDetails = {
+        ...(await verifyApxsV2SignatureDetailed(
+          downloaded.body,
+          signature,
+          credential.signKey,
+          enc.encode(clashYaml),
+        )),
+        over: "wire",
+      };
+    }
+    signatureVerified = signatureDetails.ok === true;
+    if (!signatureVerified) {
+      throw new HttpError(502, "Apex v2 subscription signature verification failed");
+    }
+  }
+  validateProxyEntries(extractProxiesBlock(clashYaml));
+  return {
+    clashYaml,
+    signatureVerified,
+    signature: signatureDetails,
+    fetchedUrl: downloaded.url,
+    contentEncoding: downloaded.headers["content-encoding"] || "",
+    wireBodyLength: downloaded.body.length,
+    decodedBodyLength: httpBody.bytes.length,
+  };
 }
 
 export function looksLikeMihomoYaml(text) {
@@ -1041,10 +1137,14 @@ async function resolveCredentials(request, env, profile = null) {
   }
 
   const envSubscription = parseSubscriptionInput(env.FLYBIRD_TOKEN);
-  if (envSubscription.token) {
+  const envXboardToken = String(env.FLYBIRD_XBOARD_TOKEN || "").trim();
+  if (envSubscription.token || envXboardToken) {
     return {
       token: envSubscription.token,
       subscriptionUrl: envSubscription.subscriptionUrl,
+      xboardToken: envXboardToken,
+      apexV2ApiDomains: configuredDomains(env.FLYBIRD_APEX_V2_API_DOMAINS, []),
+      apexV2SubscribeDomains: configuredDomains(env.FLYBIRD_APEX_V2_SUB_DOMAINS, []),
       source: "worker-token",
     };
   }
@@ -1053,6 +1153,9 @@ async function resolveCredentials(request, env, profile = null) {
     return {
       email: env.FLYBIRD_EMAIL,
       password: env.FLYBIRD_PASSWORD,
+      xboardToken: String(env.FLYBIRD_XBOARD_TOKEN || "").trim(),
+      apexV2ApiDomains: configuredDomains(env.FLYBIRD_APEX_V2_API_DOMAINS, []),
+      apexV2SubscribeDomains: configuredDomains(env.FLYBIRD_APEX_V2_SUB_DOMAINS, []),
       source: "worker-secret",
     };
   }
@@ -1068,6 +1171,13 @@ function normalizeCredentials(credentials, source) {
     return {
       token: subscription.token,
       subscriptionUrl: subscription.subscriptionUrl,
+      xboardToken: String(credentials.xboardToken || "").trim(),
+      apexV2ApiDomains: Array.isArray(credentials.apexV2ApiDomains)
+        ? credentials.apexV2ApiDomains
+        : [],
+      apexV2SubscribeDomains: Array.isArray(credentials.apexV2SubscribeDomains)
+        ? credentials.apexV2SubscribeDomains
+        : [],
       source,
     };
   }
@@ -1076,6 +1186,13 @@ function normalizeCredentials(credentials, source) {
     return {
       email: credentials.email,
       password: credentials.password,
+      xboardToken: String(credentials.xboardToken || "").trim(),
+      apexV2ApiDomains: Array.isArray(credentials.apexV2ApiDomains)
+        ? credentials.apexV2ApiDomains
+        : [],
+      apexV2SubscribeDomains: Array.isArray(credentials.apexV2SubscribeDomains)
+        ? credentials.apexV2SubscribeDomains
+        : [],
       source,
     };
   }
@@ -1086,6 +1203,38 @@ function normalizeCredentials(credentials, source) {
 async function loadSubscription(request, env, profile = null) {
   assertAccessAllowed(request, env);
   const credentials = await resolveCredentials(request, env, profile);
+  const xboardToken = credentials.xboardToken || String(env.FLYBIRD_XBOARD_TOKEN || "").trim();
+  if (xboardToken && env.FLYBIRD_APEX_V2 !== "false") {
+    let accessCredential;
+    try {
+      accessCredential = await getApexV2AccessCredential({
+        apiDomains: credentials.apexV2ApiDomains?.length
+          ? credentials.apexV2ApiDomains
+          : configuredDomains(env.FLYBIRD_APEX_V2_API_DOMAINS, DEFAULT_APEX_V2_API_DOMAINS),
+        token: xboardToken,
+      });
+    } catch (error) {
+      if (error instanceof ApexV2Error) {
+        throw new HttpError(502, error.status
+          ? `Apex v2 access-token upstream ${error.status}`
+          : "Apex v2 access-token upstream request failed");
+      }
+      throw error;
+    }
+    const downloaded = await downloadApexV2ClashYaml({
+      ...accessCredential,
+      subscribeDomains: credentials.apexV2SubscribeDomains?.length
+        ? credentials.apexV2SubscribeDomains
+        : configuredDomains(env.FLYBIRD_APEX_V2_SUB_DOMAINS, DEFAULT_APEX_V2_SUBSCRIBE_DOMAINS),
+    }, env);
+    return {
+      credentials,
+      login: null,
+      clashYaml: downloaded.clashYaml,
+      accessCredential,
+      subscription: downloaded,
+    };
+  }
   let login = null;
   let subscriptionToken = credentials.token;
   if (!subscriptionToken) {

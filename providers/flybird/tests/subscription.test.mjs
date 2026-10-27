@@ -433,6 +433,69 @@ test("GET /sub tries the Apex v2 access-key subscription endpoints for client-st
   } finally { globalThis.fetch = originalFetch; }
 });
 
+test("GET /sub exchanges xboard token and decrypts a signed HTTP-gzip APXS v2 response", async () => {
+  const originalFetch = globalThis.fetch;
+  const enc = new TextEncoder();
+  const yaml = "proxies:\n  - {\"name\":\"v2-live\",\"type\":\"ss\",\"server\":\"edge.example\",\"port\":443,\"cipher\":\"aes-128-gcm\",\"password\":\"secret\"}\n";
+  const encryptKey = "0123456789abcdef0123456789abcdef";
+  const signKey = "signed-response-key";
+  const accessKey = "access-key-1";
+  const keyBytes = new Uint8Array(await crypto.subtle.digest("SHA-256", enc.encode(encryptKey)));
+  const aesKey = await crypto.subtle.importKey("raw", keyBytes, { name: "AES-GCM" }, false, ["encrypt"]);
+  const nonce = crypto.getRandomValues(new Uint8Array(12));
+  const encrypted = new Uint8Array(await crypto.subtle.encrypt(
+    { name: "AES-GCM", iv: nonce }, aesKey, enc.encode(yaml),
+  ));
+  const raw = new Uint8Array([...nonce, ...encrypted]);
+  const signCryptoKey = await crypto.subtle.importKey(
+    "raw", enc.encode(signKey), { name: "HMAC", hash: "SHA-256" }, false, ["sign"],
+  );
+  const encoded = btoa(String.fromCharCode(...raw));
+  const compressed = new Uint8Array(await new Response(
+    new Blob([enc.encode(encoded)]).stream().pipeThrough(new CompressionStream("gzip")),
+  ).arrayBuffer());
+  const signatureBytes = new Uint8Array(await crypto.subtle.sign("HMAC", signCryptoKey, enc.encode(encoded)));
+  const signature = [...signatureBytes].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+  const calls = [];
+  globalThis.fetch = async (url) => {
+    const value = String(url);
+    calls.push(value);
+    if (value.endsWith("/v2/feed/access-token")) {
+      return Response.json({ data: { access_key: accessKey, encrypt_key: encryptKey, sign_key: signKey } });
+    }
+    if (value.includes("/v2/feed/download")) {
+      return new Response(compressed, {
+        status: 200,
+        headers: {
+          "Content-Type": "application/octet-stream",
+          "Content-Encoding": "gzip",
+          "apex-sub-sign-v2": signature,
+        },
+      });
+    }
+    return new Response("not found", { status: 404 });
+  };
+  try {
+    const response = await handleRequest(
+      new Request("https://worker.example/sub?key=abc"),
+      {
+        ACCESS_KEY: "abc",
+        FLYBIRD_APEX_V2: "true",
+        FLYBIRD_XBOARD_TOKEN: "session-token",
+        FLYBIRD_APEX_V2_API_DOMAINS: "https://api.example.invalid",
+        FLYBIRD_APEX_V2_SUB_DOMAINS: "https://sub.example.invalid",
+      },
+    );
+    const responseBody = await response.text();
+    assert.equal(response.status, 200);
+    assert.match(responseBody, /v2-live/);
+    assert.deepEqual(calls, [
+      "https://api.example.invalid/v2/feed/access-token",
+      "https://sub.example.invalid/v2/feed/download?access_key=access-key-1",
+    ]);
+  } finally { globalThis.fetch = originalFetch; }
+});
+
 test("GET /sub reports upstream WAF HTML instead of trying to parse it as a subscription", async () => {
   const restoreFetch = installFetchMock(async (url) => {
     const value = String(url);

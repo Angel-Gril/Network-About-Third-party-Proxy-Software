@@ -8,7 +8,7 @@
 
 | 提供者 | 已实现 | 运行入口 |
 | --- | --- | --- |
-| [FlyingBird / 飞鸟云](providers/flybird/README.md) | 账号登录、完整订阅解密、Mihomo 分流、v2rayN 导出；可选 Worker 和 VPS 分发 | PowerShell 本地导出、JavaScript 共享包 |
+| [FlyingBird / 飞鸟云](providers/flybird/README.md) | 账号登录、APXS v2 纯协议解密、Mihomo 分流、v2rayN 导出；可选 Worker 和 VPS 分发 | PowerShell 本地导出、JavaScript 共享包、Node headless |
 | [LeapVPN / 飞跃](providers/leapvpn/README.md) | 协议 X 的逐线路提取、Clash/Xray/VLESS 导出、设备身份持久化与会话续期 | 可安装的 Python 包 |
 | [MonoCloud](providers/monocloud/README.md) | 账号登录、套餐与流量检查、Shadowsocks 节点、Clash、`ss://` 与 v2rayN 导出 | JavaScript 共享包与 CLI |
 

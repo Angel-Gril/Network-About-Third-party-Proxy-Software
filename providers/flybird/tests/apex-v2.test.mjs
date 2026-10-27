@@ -16,8 +16,10 @@ test("Apex v2 normalizers preserve the session and access-key distinction", () =
   });
   assert.deepEqual(normalizeApexV2AccessCredential({ data: {
     access_key: "access", encrypt_key: "enc", sign_key: "sig", expires_at: "later",
+    subscribe_url: "https://sub.example.invalid/v2/feed/download?access_key=access",
   } }), {
     accessKey: "access", encryptKey: "enc", signKey: "sig", keyId: "", expiresAt: "later",
+    subscribeUrl: "https://sub.example.invalid/v2/feed/download?access_key=access",
   });
 });
 
@@ -48,6 +50,17 @@ test("Apex v2 download URLs are built from access_key and current subscribe doma
     "https://sub.example.invalid/v2/feed/download?access_key=a%2Fb",
   ]);
   assert.throws(() => normalizeApexV2AccessCredential({ data: {} }), ApexV2Error);
+});
+
+test("Apex v2 honors an explicit subscribe_url before fallback domains", () => {
+  assert.deepEqual(buildApexV2DownloadUrls(
+    "a/b",
+    ["https://fallback.example.invalid"],
+    "https://direct.example.invalid/feed?x=1",
+  ), [
+    "https://direct.example.invalid/feed?x=1&access_key=a%2Fb",
+    "https://fallback.example.invalid/v2/feed/download?access_key=a%2Fb",
+  ]);
 });
 
 test("Apex v2 download falls back across subscription domains and returns raw bytes", async () => {

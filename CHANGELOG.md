@@ -2,6 +2,7 @@
 
 ## 未发布
 
+- 飞鸟新增纯协议 APXS v2 刷新链路，支持 mTLS、AES-256-CTR 解密、脱敏 fixtures 与 Linux 无客户端部署；发布前统一恢复完整策略组和规则，并拒绝无效的分组/规则引用。
 - 私有订阅服务器新增 Clash YAML、明文 URI 与 v2rayN Base64 三种读取格式；原 `.yaml` 链接和 provider token 保持有效。
 - 管理页新增逐 provider 自动刷新开关和 5 分钟至 30 天的间隔设置，systemd 每五分钟检查一次到期状态，默认仍为六小时。
 - MonoCloud 导出在读取节点前检查套餐截止时间和流量额度；流量用尽或套餐过期时明确失败并保留最后有效缓存，本地 CLI 增加 v2rayN Base64 文件。

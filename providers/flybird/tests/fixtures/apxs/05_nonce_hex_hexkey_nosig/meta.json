@@ -1,0 +1,9 @@
+{
+  "layout": "nonce-ct-tag",
+  "encoding": "hex",
+  "key_derivation": "hexdecode",
+  "plain_transform": null,
+  "signature": null,
+  "expect": "ok",
+  "negative_kind": null
+}

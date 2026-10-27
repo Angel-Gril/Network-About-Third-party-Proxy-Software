@@ -63,13 +63,20 @@ async function refreshFlyBird() {
         // Fetch again on every DNS failure so a rotated upstream hostname is detected automatically.
         const response = await handleRequest(new Request(`https://${domain}/sub?key=${internalKey}`), {
           ACCESS_KEY: internalKey,
-          ...(credential.token
+          ...(credential.token || credential.xboardToken
             ? {
-              FLYBIRD_TOKEN: credential.token,
+              ...(credential.token ? { FLYBIRD_TOKEN: credential.token } : {}),
+              ...(credential.xboardToken ? { FLYBIRD_XBOARD_TOKEN: credential.xboardToken } : {}),
               ...(credential.subscriptionUrl
                 ? { FLYBIRD_SUB_URL_TEMPLATE: credential.subscriptionUrl }
                 : {}),
               FLYBIRD_APEX_V2: "true",
+              ...(process.env.FLYBIRD_CLIENT_CERT ? { FLYBIRD_CLIENT_CERT: process.env.FLYBIRD_CLIENT_CERT } : {}),
+              ...(process.env.FLYBIRD_CLIENT_KEY ? { FLYBIRD_CLIENT_KEY: process.env.FLYBIRD_CLIENT_KEY } : {}),
+              ...(process.env.FLYBIRD_INSECURE_TLS ? { FLYBIRD_INSECURE_TLS: process.env.FLYBIRD_INSECURE_TLS } : {}),
+              ...(credential.apexV2ApiDomains?.length
+                ? { FLYBIRD_APEX_V2_API_DOMAINS: credential.apexV2ApiDomains.join(",") }
+                : {}),
               ...(credential.apexV2SubscribeDomains?.length
                 ? { FLYBIRD_APEX_V2_SUB_DOMAINS: credential.apexV2SubscribeDomains.join(",") }
                 : {}),
@@ -103,6 +110,8 @@ async function refreshFlyBird() {
     credential.token = "";
     credential.subscriptionUrl = "";
     credential.xboardToken = "";
+    credential.apexV2ApiDomains = [];
+    credential.apexV2SubscribeDomains = [];
   }
 }
 
