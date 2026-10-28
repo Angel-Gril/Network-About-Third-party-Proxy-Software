@@ -72,12 +72,36 @@ function validateDistribution(text) {
   };
 }
 
+function normalizeProxyEntries(source) {
+  let config;
+  try {
+    config = YAML.parse(source, { uniqueKeys: true, maxAliasCount: 100 });
+  } catch {
+    throw new Error("FlyBird source is invalid YAML");
+  }
+  if (!config || !Array.isArray(config.proxies) || !config.proxies.length) {
+    throw new Error("FlyBird source has no proxies");
+  }
+
+  // The Python v1+v2 merger emits normal block-style YAML. The shared
+  // renderer also accepts the v2 client's compact JSON proxy lines, so
+  // normalize both forms at this boundary before handing the config over.
+  const preamble = { ...config };
+  delete preamble.proxies;
+  delete preamble["proxy-groups"];
+  delete preamble.rules;
+  const prefix = YAML.stringify(preamble, { lineWidth: 0 }).trimEnd();
+  return `${prefix}\nproxies:\n${config.proxies
+    .map((proxy) => `  - ${JSON.stringify(proxy)}`)
+    .join("\n")}\n`;
+}
+
 export async function renderFlyBirdSubscription(source, baseUrl) {
   const origin = new URL(baseUrl);
   if (origin.protocol !== "https:" || origin.pathname !== "/" || origin.search || origin.hash) {
     throw new Error("FlyBird distribution base URL must be an HTTPS origin");
   }
-  const rendered = enhanceMihomoConfig(source, origin.origin);
+  const rendered = enhanceMihomoConfig(normalizeProxyEntries(source), origin.origin);
   const counts = validateDistribution(rendered);
   return { yaml: rendered.endsWith("\n") ? rendered : `${rendered}\n`, ...counts };
 }

@@ -24,6 +24,19 @@ const raw = [
   "",
 ].join("\n");
 
+const blockStyleRaw = YAML.stringify({
+  "mixed-port": 7890,
+  mode: "rule",
+  proxies: [
+    { name: "Hong Kong-01", type: "trojan", server: "hk.example.invalid", port: 443,
+      password: "synthetic-password", sni: "sni.example.invalid", "skip-cert-verify": true },
+    { name: "USA-01", type: "ss", server: "us.example.invalid", port: 11011,
+      cipher: "aes-256-cfb", password: "synthetic-password" },
+  ],
+  "proxy-groups": [{ name: "upstream", type: "select", proxies: ["Hong Kong-01", "USA-01"] }],
+  rules: ["MATCH,upstream"],
+});
+
 test("pure protocol rendering restores distribution groups and valid rule targets", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "render-flybird-"));
   try {
@@ -70,6 +83,26 @@ test("pure protocol rendering rejects malformed upstream YAML before publishing"
     assert.equal(result.status, 1);
     assert.match(result.stderr, /FlyBird render failed/);
     await assert.rejects(fs.stat(output), { code: "ENOENT" });
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test("pure protocol rendering accepts block-style YAML from the v1+v2 merger", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "render-flybird-block-"));
+  try {
+    const input = path.join(root, "raw.yaml");
+    const output = path.join(root, "flybird.yaml");
+    await fs.writeFile(input, blockStyleRaw);
+    const result = spawnSync(process.execPath, [script, "--in", input, "--out", output,
+      "--base-url", "https://sub.example.invalid"], { encoding: "utf8" });
+    assert.equal(result.status, 0, result.stderr);
+    const config = YAML.parse(await fs.readFile(output, "utf8"));
+    assert.equal(config.proxies.length, 2);
+    assert.equal(config["proxy-groups"].length, 15);
+    assert.equal(config.rules.length, 19);
+    assert.ok(config.proxies.some((proxy) => proxy.type === "trojan"));
+    assert.ok(config.proxies.some((proxy) => proxy.type === "ss"));
   } finally {
     await fs.rm(root, { recursive: true, force: true });
   }
