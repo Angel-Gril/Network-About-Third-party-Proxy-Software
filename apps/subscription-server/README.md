@@ -70,6 +70,8 @@ systemctl enable --now private-subscription.service private-subscription-refresh
 
 timer 每五分钟检查一次逐 provider 设置，默认启用且成功刷新间隔六小时。管理页面 `/admin/` 可独立开关 FlyBird、LeapVPN 和 MonoCloud 的自动刷新，并设置 5 分钟到 30 天的成功刷新间隔；手动刷新不受开关影响。刷新失败后使用 5 分钟短退避重试，不把失败时间推迟到下一个六小时周期。设置原子保存到 `REFRESH_SETTINGS_FILE`，默认位于 `/var/lib/private-subscription/state/subscription-server/refresh-settings.json`。
 
+FlyBird 外部纯协议服务通过 `FLYBIRD_REFRESH_TRIGGER_FILE` 接入统一调度：设为服务可写状态目录中的 trigger 文件路径，安装对应 `.path` 单元触发 root 抓取服务。接入后停用旧 `apex-fetch.timer`，启用 `private-subscription-refresh-flybird.timer`，后台保存的间隔与开关才是实际执行依据。worker 等待真实发布结果，使用同一状态锁防止重复请求；刷新中继续分发最后有效缓存，页面显示 `Refreshing…`。仅触发任务不会更新成功时间，失败/超时保留旧缓存。
+
 每家使用同一个读取 token 提供三种格式；重置任一格式的链接会同时撤销该 provider 的全部旧格式链接：
 
 | 格式 | 路径 | 用途 |

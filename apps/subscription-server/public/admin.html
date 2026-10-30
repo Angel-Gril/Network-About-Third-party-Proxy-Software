@@ -73,6 +73,7 @@
     const names = { flybird: 'FlyBird', leapvpn: 'LeapVPN', monocloud: 'MonoCloud' };
     const formats = { clash: { label: 'Clash / Mihomo', extension: 'yaml' }, v2rayn: { label: 'v2rayN / v2rayNG', extension: 'b64' }, uri: { label: 'URI list', extension: 'txt' } };
     const selectedFormats = {};
+    let refreshPoll;
     const safe = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
     const displayTime = (value) => value ? new Date(value).toLocaleString() : '-';
     function intervalParts(minutes) {
@@ -89,13 +90,21 @@
       const response = await fetch('/admin/api/status', { cache: 'no-store' });
       const data = await response.json();
       body.innerHTML = Object.entries(data.providers).map(([key, value]) => {
-        const status = value.available && !value.lastError ? '<span class="ok">Ready</span>' : `<span class="bad">${safe(value.lastError || 'Unavailable')}</span>`;
+        const status = value.refreshing ? 'Refreshing…' : value.available && !value.lastError ? '<span class="ok">Ready</span>' : `<span class="bad">${safe(value.lastError || 'Unavailable')}</span>`;
         const refresh = value.refresh || { enabled: true, intervalMinutes: 360, nextAt: null };
         const interval = intervalParts(refresh.intervalMinutes);
         const selected = selectedFormats[key] || 'clash';
-        const next = refresh.enabled ? `Next: ${displayTime(refresh.nextAt)}` : 'Automatic refresh is off';
+        const next = value.refreshing ? 'Refresh in progress; serving the last valid configuration' : refresh.enabled ? `Next: ${displayTime(refresh.nextAt)}` : 'Automatic refresh is off';
         return `<tr><td data-label="Provider">${names[key]}</td><td data-label="Status">${status}</td><td data-label="Updated">${safe(displayTime(value.updatedAt))}</td><td data-label="Nodes">${safe(value.proxyCount || 0)}</td><td data-label="Format"><select class="format-select" data-format="${key}" aria-label="${names[key]} subscription format">${formatOptions(selected)}</select></td><td data-label="Auto refresh"><div class="schedule-control" data-schedule="${key}"><input type="checkbox" data-enabled aria-label="Enable ${names[key]} automatic refresh"${refresh.enabled ? ' checked' : ''}><input type="number" data-interval min="1" max="43200" value="${interval.value}" aria-label="Refresh interval"><select data-unit aria-label="Refresh interval unit"><option value="minutes"${interval.unit === 'minutes' ? ' selected' : ''}>Minutes</option><option value="hours"${interval.unit === 'hours' ? ' selected' : ''}>Hours</option><option value="days"${interval.unit === 'days' ? ' selected' : ''}>Days</option></select><button data-save-schedule="${key}">Save</button><span class="schedule-note">${safe(next)}</span></div></td><td data-label="Actions"><div class="actions"><button class="copy-button" data-copy-link="${key}">Copy link</button><button class="reset-button" data-reset-link="${key}">Reset link</button><a class="button" data-download="${key}" href="/admin/download/${key}.${formats[selected].extension}">Download</a><button data-provider="${key}">Refresh</button></div></td></tr>`;
       }).join('');
+      for (const [provider, value] of Object.entries(data.providers)) {
+        const button = document.querySelector(`button[data-provider="${provider}"]`);
+        if (button) button.disabled = Boolean(value.refreshing);
+      }
+      clearTimeout(refreshPoll);
+      if (Object.values(data.providers).some(value => value.refreshing)) {
+        refreshPoll = setTimeout(() => load(), 2000);
+      }
     }
     async function copyText(value) {
       if (navigator.clipboard && window.isSecureContext) {
@@ -191,12 +200,19 @@
       const button = event.target.closest('button[data-provider]');
       if (!button) return;
       button.disabled = true;
-      await fetch(`/admin/api/refresh/${button.dataset.provider}`, {
-        method: 'POST',
-        headers: { 'X-Admin-Action': 'private-subscription-admin' },
-      });
-      message.textContent = `${names[button.dataset.provider]} refresh started`;
-      setTimeout(() => load(true), 1200);
+      try {
+        const response = await fetch(`/admin/api/refresh/${button.dataset.provider}`, {
+          method: 'POST',
+          headers: { 'X-Admin-Action': 'private-subscription-admin' },
+        });
+        if (response.status === 409) message.textContent = `${names[button.dataset.provider]} refresh already running`;
+        else if (!response.ok) throw new Error('Refresh could not be started');
+        else message.textContent = `${names[button.dataset.provider]} refresh requested; waiting for publication`;
+      } catch {
+        message.textContent = 'Refresh could not be started';
+      } finally {
+        await load(true);
+      }
     });
     body.addEventListener('change', (event) => {
       const select = event.target.closest('select[data-format]');

@@ -11,6 +11,7 @@ import { commitLastGood, recordFailure } from "./cache.mjs";
 import { PROVIDERS } from "./providers.mjs";
 import { prepareSubscription } from "./validate-subscription.mjs";
 import { applyRoutingTemplate } from "./routing-template.mjs";
+import { flyBirdTriggerFile, refreshViaFlyBirdTrigger } from "./flybird-refresh-trigger.mjs";
 import YAML from "yaml";
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -47,6 +48,8 @@ async function readFlyBirdCredential() {
 }
 
 async function refreshFlyBird() {
+  const triggerFile = flyBirdTriggerFile(process.env, cacheDirectory);
+  if (triggerFile) return refreshViaFlyBirdTrigger({ triggerFile, cacheDirectory });
   const credential = await readFlyBirdCredential();
   try {
     const domain = process.env.PUBLIC_DOMAIN;

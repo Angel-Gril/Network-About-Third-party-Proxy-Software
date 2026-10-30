@@ -75,7 +75,9 @@ API 和订阅使用两套独立的 mTLS 身份：
 模板不启用宿主机 TUN，不修改本机系统 DNS。客户端更新订阅后应重新加载配置，才能应用新网络策略。
 网站 TLS 证书验证保持开启；不能用跳过证书校验代替 DNS 修复。诊断时区分真实 DNS、Fake-IP 映射与代理节点入口解析。
 
-`apex-fetch.timer` 负责周期刷新；Private Subscription 管理页的 FlyBird 刷新按钮通过 trigger path 触发同一个 root service。失败时保留最后有效缓存。
+Private Subscription 的 `private-subscription-refresh-flybird.timer` 每五分钟检查后台保存的开关和刷新间隔，到期时通过 trigger path 调用同一个 root `apex-fetch.service`。管理页手动刷新不受自动刷新开关限制。接入统一调度后停用固定六小时的 `apex-fetch.timer`，避免两套周期冲突；独立部署可继续使用该固定周期。
+
+通过 `service.env` 的 `FLYBIRD_REFRESH_TRIGGER_FILE` 指定 trigger 文件的绝对路径（路径应位于服务可写的状态目录）。旧的 `FLYBIRD_OPENWRT_TRIGGER=1` 兼容保留，但不会运行旧客户端。外部 worker 使用 `.pending` 状态锁合并手动和定时请求，等待缓存的成功或失败记录更新；仅写入 trigger 不算刷新成功。超时记录失败并保留有效缓存；页面显示 `Refreshing…`，实际发布后才更新日期与下一次刷新时间。
 
 ## 已废弃的路线
 
