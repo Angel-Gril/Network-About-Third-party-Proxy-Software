@@ -82,6 +82,8 @@ timer 每五分钟检查一次逐 provider 设置，默认启用且成功刷新�
 
 LeapVPN 与 MonoCloud 导出后应用 FlyingBird 的共享分流 renderer，保持节点连接参数，检查策略引用，再发布缓存。默认含 15 个策略组和 19 条规则，前两个内网后缀为公开占位示例；GeoX 更新周期为 24 小时。实际节点数随上游目录变化。
 
+FlyBird 纯协议发布另外应用 [网络模板](templates/flybird-network.yaml)，最终为 15 个策略组、21 条规则。网站 DNS 默认经选定节点访问可信 DoH，节点入口单独使用国内加密 DNS；启用 HTTP/TLS/QUIC 嗅探，保留上游 Fake-IP 排除项，关闭 DNS IPv6。`agentrouter.org` 和 `anyrouter.top` 的 DNS 与代理规则优先于 GeoSite/GeoIP。模板文件与 `src/render-flybird.mjs` 必须一同部署；渲染时核对节点参数未被修改，失败不发布。配置不会启用宿主机 TUN，也不会关闭网站证书验证。
+
 FlyBird 每次刷新都会重新读取上游入口；新入口遇到 DNS 校验失败时短暂重试并再次拉取，最多 3 次。入口优先使用服务器系统 DNS 验证；系统 DNS 无记录时，仅当订阅同时声明至少两个可解析的 HTTPS `proxy-server-nameserver`，才保留域名交给 Mihomo 客户端的节点专用解析链，并在缓存元数据记录 `delegatedHostCount`。缺少这组条件仍会拒绝发布并保留最后有效缓存。
 
 订阅 URI 含读取 token，因此 Nginx 的 HTTP 过渡配置、重定向入口和 HTTPS 订阅路径关闭相应请求日志；订阅路径也关闭会带出完整 URI 的 upstream error 日志。故障诊断使用服务状态、脱敏刷新错误和健康接口。

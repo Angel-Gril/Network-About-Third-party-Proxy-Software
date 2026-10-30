@@ -59,9 +59,21 @@ API 和订阅使用两套独立的 mTLS 身份：
 
 纯协议抓取器拿到的是上游原始 YAML。发布到 Private Subscription 前必须调用
 `apps/subscription-server/src/render-flybird.mjs`，由现有 `enhanceMihomoConfig`
-补齐完整的 15 个策略组、19 条规则和 GeoX URL；不能把原始 APXS 解密结果直接
+补齐完整的 15 个策略组、21 条规则和 GeoX URL；不能把原始 APXS 解密结果直接
 作为最终分发文件。renderer 会检查每个分组和规则的目标都能解析到节点、策略组
 或 Mihomo 内置目标。渲染失败时保留上一份有效缓存。
+
+### TUN 下的 DNS 与嗅探
+
+发布阶段应用 [网络模板](../apps/subscription-server/templates/flybird-network.yaml)：
+
+- 节点入口使用直连的国内加密 DNS，网站域名默认通过 `节点选择` 访问 Cloudflare/Google DoH，避免 DNS 解析依赖循环。
+- 国内 GeoSite 域名使用国内 DoH；`agentrouter.org`、`anyrouter.top` 显式使用代理 DoH，并在 GeoIP 规则前匹配 `AI服务`。
+- `dns.ipv6` 关闭，避免异常 AAAA 记录进入客户端连接；节点本身的 `ip-version`、认证和 TLS 参数保持原样。
+- 启用 HTTP/TLS/QUIC 嗅探、纯 IP 解析和目标域名恢复；保留上游局域网、STUN 的 Fake-IP 排除项与嗅探排除项。
+
+模板不启用宿主机 TUN，不修改本机系统 DNS。客户端更新订阅后应重新加载配置，才能应用新网络策略。
+网站 TLS 证书验证保持开启；不能用跳过证书校验代替 DNS 修复。诊断时区分真实 DNS、Fake-IP 映射与代理节点入口解析。
 
 `apex-fetch.timer` 负责周期刷新；Private Subscription 管理页的 FlyBird 刷新按钮通过 trigger path 触发同一个 root service。失败时保留最后有效缓存。
 

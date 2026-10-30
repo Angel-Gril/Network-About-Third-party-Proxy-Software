@@ -1,0 +1,60 @@
+# Node bootstrap uses encrypted direct DNS; application DNS goes through the
+# selected proxy. Keeping the two paths separate prevents a resolution loop.
+dns:
+  enable: true
+  ipv6: false
+  use-hosts: true
+  enhanced-mode: fake-ip
+  fake-ip-range: 198.18.0.1/16
+  respect-rules: false
+  default-nameserver:
+  - 223.5.5.5
+  - 119.29.29.29
+  proxy-server-nameserver:
+  - https://doh.pub/dns-query
+  - https://dns.alidns.com/dns-query
+  nameserver:
+  - 'https://1.1.1.1/dns-query#节点选择'
+  - 'https://8.8.8.8/dns-query#节点选择'
+  nameserver-policy:
+    'geosite:cn':
+    - https://doh.pub/dns-query
+    - https://dns.alidns.com/dns-query
+    '+.agentrouter.org':
+    - 'https://1.1.1.1/dns-query#节点选择'
+    - 'https://8.8.8.8/dns-query#节点选择'
+    '+.anyrouter.top':
+    - 'https://1.1.1.1/dns-query#节点选择'
+    - 'https://8.8.8.8/dns-query#节点选择'
+  fake-ip-filter:
+  - '*.lan'
+  - '*.local'
+  - '*.localhost'
+  - '*.home.arpa'
+  - time.*.com
+  - ntp.*.com
+  - +.pool.ntp.org
+  - localhost.ptlogin2.qq.com
+  - +.msftconnecttest.com
+  - +.msftncsi.com
+sniffer:
+  enable: true
+  force-dns-mapping: true
+  parse-pure-ip: true
+  override-destination: true
+  sniff:
+    HTTP:
+      ports: [80, 8080-8880]
+      override-destination: true
+    TLS:
+      ports: [443, 8443]
+      override-destination: true
+    QUIC:
+      ports: [443, 8443]
+      override-destination: true
+  skip-domain:
+  - Mijia Cloud
+# These rules precede GeoSite/GeoIP so a poisoned IP cannot select DIRECT.
+prepend-rules:
+- DOMAIN-SUFFIX,agentrouter.org,AI服务
+- DOMAIN-SUFFIX,anyrouter.top,AI服务

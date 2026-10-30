@@ -2,6 +2,7 @@
 
 ## 未发布
 
+- 修复 FlyBird 纯协议发布缺少 DNS 防污染与嗅探策略的问题：网站 DoH 通过代理访问，节点入口单独解析，恢复 HTTP/TLS/QUIC 嗅探并添加 AI 中转站优先规则；节点认证与 TLS 参数保持原样。
 - 修复 v1/v2 合并线路生成的块状 YAML 无法进入共享 FlyBird renderer 的问题；both 模式现在可以在发布前恢复完整策略组和规则。
 - 飞鸟新增纯协议 APXS v2 刷新链路，支持 mTLS、AES-256-CTR 解密、脱敏 fixtures 与 Linux 无客户端部署；发布前统一恢复完整策略组和规则，并拒绝无效的分组/规则引用。
 - 私有订阅服务器新增 Clash YAML、明文 URI 与 v2rayN Base64 三种读取格式；原 `.yaml` 链接和 provider token 保持有效。

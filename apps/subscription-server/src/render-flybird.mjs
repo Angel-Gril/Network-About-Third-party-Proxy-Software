@@ -3,6 +3,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
+import { isDeepStrictEqual } from "node:util";
 import YAML from "yaml";
 import { enhanceMihomoConfig } from "@proxy-toolkit/flybird";
 
@@ -72,7 +73,7 @@ function validateDistribution(text) {
   };
 }
 
-function normalizeProxyEntries(source) {
+function normalizeProxyEntries(source, network) {
   let config;
   try {
     config = YAML.parse(source, { uniqueKeys: true, maxAliasCount: 100 });
@@ -87,13 +88,33 @@ function normalizeProxyEntries(source) {
   // renderer also accepts the v2 client's compact JSON proxy lines, so
   // normalize both forms at this boundary before handing the config over.
   const preamble = { ...config };
+  // Keep upstream exclusions (LAN, STUN and device discovery), but replace
+  // resolver paths that can return poisoned addresses to TUN applications.
+  preamble.dns = {
+    ...config.dns,
+    ...network.dns,
+    "nameserver-policy": { ...config.dns?.["nameserver-policy"], ...network.dns["nameserver-policy"] },
+    "fake-ip-filter": [...new Set([
+      ...(config.dns?.["fake-ip-filter"] || []), ...network.dns["fake-ip-filter"],
+    ])],
+  };
+  // A legacy fallback must not bypass the protected application resolver.
+  delete preamble.dns.fallback;
+  delete preamble.dns["fallback-filter"];
+  preamble.sniffer = {
+    ...config.sniffer,
+    ...network.sniffer,
+    "skip-domain": [...new Set([
+      ...(config.sniffer?.["skip-domain"] || []), ...network.sniffer["skip-domain"],
+    ])],
+  };
   delete preamble.proxies;
   delete preamble["proxy-groups"];
   delete preamble.rules;
   const prefix = YAML.stringify(preamble, { lineWidth: 0 }).trimEnd();
-  return `${prefix}\nproxies:\n${config.proxies
+  return { proxies: config.proxies, yaml: `${prefix}\nproxies:\n${config.proxies
     .map((proxy) => `  - ${JSON.stringify(proxy)}`)
-    .join("\n")}\n`;
+    .join("\n")}\n` };
 }
 
 export async function renderFlyBirdSubscription(source, baseUrl) {
@@ -101,7 +122,13 @@ export async function renderFlyBirdSubscription(source, baseUrl) {
   if (origin.protocol !== "https:" || origin.pathname !== "/" || origin.search || origin.hash) {
     throw new Error("FlyBird distribution base URL must be an HTTPS origin");
   }
-  const rendered = enhanceMihomoConfig(normalizeProxyEntries(source), origin.origin);
+  const network = YAML.parse(await fs.readFile(new URL("../templates/flybird-network.yaml", import.meta.url), "utf8"));
+  const normalized = normalizeProxyEntries(source, network);
+  const rendered = enhanceMihomoConfig(normalized.yaml, origin.origin).replace(/^rules:\s*$/m,
+    `rules:\n${network["prepend-rules"].map(rule => `  - ${JSON.stringify(rule)}`).join("\n")}`);
+  if (!isDeepStrictEqual(YAML.parse(rendered).proxies, normalized.proxies)) {
+    throw new Error("FlyBird network template changed proxy connection parameters");
+  }
   const counts = validateDistribution(rendered);
   return { yaml: rendered.endsWith("\n") ? rendered : `${rendered}\n`, ...counts };
 }
