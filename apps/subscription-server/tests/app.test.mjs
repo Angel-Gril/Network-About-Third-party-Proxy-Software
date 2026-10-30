@@ -6,7 +6,7 @@ import path from "node:path";
 import test from "node:test";
 import { createHandler } from "../src/app.mjs";
 
-async function fixture() {
+async function fixture(options = {}) {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), "private-sub-test-"));
   const calls = [];
   let readToken = "a".repeat(40);
@@ -36,6 +36,7 @@ async function fixture() {
       calls.push(provider);
       return { ok: true, started: true, provider };
     },
+    isRefreshing: options.isRefreshing,
     loadRuleAsset: async (asset) => asset === "geoip.dat" ? Buffer.from("rules") : null,
     getRefreshSettings: async () => structuredClone(refreshSettings),
     updateRefreshSettings: async (provider, value) => {
@@ -121,6 +122,21 @@ test("reports provider status and starts refresh jobs", async () => {
   } finally {
     await app.close();
   }
+});
+
+test("reports a pending FlyBird publication while still serving the last-good configuration", async () => {
+  let pending = true;
+  const app = await fixture({ isRefreshing: provider => provider === "flybird" && pending });
+  try {
+    await fs.writeFile(path.join(app.directory, "flybird.yaml"), "last-good-content");
+    let status = await fetch(`${app.url}/admin/api/status`).then(r => r.json());
+    assert.equal(status.providers.flybird.refreshing, true);
+    assert.equal(status.providers.leapvpn.refreshing, false);
+    assert.equal(await fetch(`${app.url}/s/${"a".repeat(40)}/flybird.yaml`).then(r => r.text()), "last-good-content");
+    pending = false;
+    status = await fetch(`${app.url}/admin/api/status`).then(r => r.json());
+    assert.equal(status.providers.flybird.refreshing, false);
+  } finally { await app.close(); }
 });
 
 test("serves URI and v2rayN formats under the same provider token", async () => {

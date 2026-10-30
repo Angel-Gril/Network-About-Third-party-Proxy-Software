@@ -1,0 +1,8 @@
+mixed-port: 7890
+mode: rule
+proxies:
+  - {name: fixture-hk, type: vless, server: hk.fixture.invalid, port: 443, uuid: 11111111-1111-1111-1111-111111111111, tls: true}
+proxy-groups:
+  - {name: PROXY, type: select, proxies: [fixture-hk]}
+rules:
+  - {type: field, ipcidr: 0.0.0.0/0, outbound: PROXY}

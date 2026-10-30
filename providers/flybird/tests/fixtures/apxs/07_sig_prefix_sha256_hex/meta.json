@@ -1,0 +1,13 @@
+{
+  "layout": "nonce-ct-tag",
+  "encoding": "base64",
+  "key_derivation": "sha256_utf8",
+  "plain_transform": null,
+  "signature": {
+    "scope": "ciphertext",
+    "encoding": "hex",
+    "prefix": "sha256="
+  },
+  "expect": "ok",
+  "negative_kind": null
+}

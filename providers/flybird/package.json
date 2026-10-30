@@ -3,10 +3,18 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "exports": "./src/subscription.js",
+  "exports": {
+    ".": "./src/subscription.js",
+    "./client-state": "./src/client-state.js",
+    "./apex-v2": "./src/apex-v2.js",
+    "./apxs-v2": "./src/apxs-v2.js",
+    "./apxs-ctr": "./src/apxs-ctr.js"
+  },
   "engines": { "node": ">=22" },
   "scripts": {
     "test": "node --test",
-    "check": "node --check src/subscription.js"
+    "test:apxs-fixtures": "node tests/verify-apxs-fixtures.mjs",
+    "check": "node --check src/subscription.js && node --check src/client-state.js && node --check src/apex-v2.js && node --check src/apxs-v2.js && node --check src/headless.mjs",
+    "headless": "node src/headless.mjs"
   }
 }
