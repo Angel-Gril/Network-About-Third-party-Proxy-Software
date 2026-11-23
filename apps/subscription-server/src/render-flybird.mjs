@@ -88,8 +88,7 @@ function normalizeProxyEntries(source, network) {
   // renderer also accepts the v2 client's compact JSON proxy lines, so
   // normalize both forms at this boundary before handing the config over.
   const preamble = { ...config };
-  // Keep upstream exclusions (LAN, STUN and device discovery), but replace
-  // resolver paths that can return poisoned addresses to TUN applications.
+  // Protect application DNS without replacing the provider's entry bootstrap.
   preamble.dns = {
     ...config.dns,
     ...network.dns,
@@ -98,6 +97,9 @@ function normalizeProxyEntries(source, network) {
       ...(config.dns?.["fake-ip-filter"] || []), ...network.dns["fake-ip-filter"],
     ])],
   };
+  for (const key of ["ipv6", "default-nameserver", "proxy-server-nameserver"]) {
+    if (Object.hasOwn(config.dns || {}, key)) preamble.dns[key] = config.dns[key];
+  }
   // A legacy fallback must not bypass the protected application resolver.
   delete preamble.dns.fallback;
   delete preamble.dns["fallback-filter"];

@@ -120,6 +120,8 @@ test("network template protects application DNS and preserves node TLS credentia
     });
     source.dns = {
       enable: true, ipv6: true, "enhanced-mode": "fake-ip",
+      "default-nameserver": ["1.0.0.1"],
+      "proxy-server-nameserver": ["https://private-dns.example.invalid/query"],
       nameserver: ["223.5.5.5"], fallback: ["119.29.29.29"],
       "fallback-filter": { geoip: true },
       "fake-ip-filter": ["+.device.example.invalid"],
@@ -134,13 +136,12 @@ test("network template protects application DNS and preserves node TLS credentia
     assert.equal(result.status, 0, result.stderr);
     const config = YAML.parse(await fs.readFile(output, "utf8"));
     assert.deepEqual(config.proxies, source.proxies);
-    assert.equal(config.dns.ipv6, false);
+    assert.equal(config.dns.ipv6, true);
+    assert.deepEqual(config.dns["default-nameserver"], source.dns["default-nameserver"]);
     assert.deepEqual(config.dns.nameserver, [
       "https://1.1.1.1/dns-query#节点选择", "https://8.8.8.8/dns-query#节点选择",
     ]);
-    assert.deepEqual(config.dns["proxy-server-nameserver"], [
-      "https://doh.pub/dns-query", "https://dns.alidns.com/dns-query",
-    ]);
+    assert.deepEqual(config.dns["proxy-server-nameserver"], source.dns["proxy-server-nameserver"]);
     assert.equal(config.dns.fallback, undefined);
     assert.equal(config.dns["fallback-filter"], undefined);
     for (const domain of ["agentrouter.org", "anyrouter.top"]) {

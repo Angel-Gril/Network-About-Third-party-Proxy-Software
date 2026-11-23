@@ -1,8 +1,8 @@
-# Node bootstrap uses encrypted direct DNS; application DNS goes through the
-# selected proxy. Keeping the two paths separate prevents a resolution loop.
+# These bootstrap defaults apply only when the upstream does not supply them.
+# Provider node DNS and its IPv6 setting are preserved by the renderer.
 dns:
   enable: true
-  ipv6: false
+  ipv6: true
   use-hosts: true
   enhanced-mode: fake-ip
   fake-ip-range: 198.18.0.1/16

@@ -82,12 +82,18 @@ export async function prepareSubscription(text, options = {}) {
   let recoveredServerCount = 0;
   const unresolved = new Set();
   const resolverHosts = options.allowProxyResolver ? proxyResolverHosts(config) : [];
-  const proxyResolverReady = resolverHosts.length >= 2 &&
-    (await Promise.all(resolverHosts.map(resolves))).filter(Boolean).length >= 2;
+  const proxyResolverReady = resolverHosts.length > 0 && typeof options.resolveViaProxy === "function";
+  const delegatedHosts = new Set();
   for (const proxy of config.proxies) {
     if (await resolves(proxy.server)) continue;
     if (proxyResolverReady && !isIP(proxy.server)) {
-      continue;
+      try {
+        const answers = await options.resolveViaProxy(proxy.server, config.dns["proxy-server-nameserver"]);
+        if (answers.some(answer => realAddress(typeof answer === "string" ? answer : answer.address))) {
+          delegatedHosts.add(proxy.server);
+          continue;
+        }
+      } catch { /* Resolver reachability alone does not validate the entry. */ }
     }
     const key = options.allowServerRecovery ? recoverableIdentity(proxy) : null;
     for (const prior of key ? byIdentity.get(key) || [] : []) {
@@ -105,8 +111,6 @@ export async function prepareSubscription(text, options = {}) {
     proxyCount: config.proxies.length,
     validatedHostCount: new Set(config.proxies.map(proxy => proxy.server)).size,
     recoveredServerCount,
-    delegatedHostCount: new Set(config.proxies
-      .filter(proxy => proxyResolverReady && !isIP(proxy.server))
-      .map(proxy => proxy.server)).size,
+    delegatedHostCount: delegatedHosts.size,
   };
 }
