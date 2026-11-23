@@ -27,6 +27,7 @@ ENTRY_RESOLVER=${ENTRY_RESOLVER:-$(dirname "$RENDERER")/flybird-entries.mjs}
 ENTRY_STATE=${ENTRY_STATE:-/var/lib/apex-fetch/entry-addresses.json}
 ENTRY_MAX_AGE_SECONDS=${ENTRY_MAX_AGE_SECONDS:-86400}
 ENTRY_REQUIRE_IPV4=${ENTRY_REQUIRE_IPV4:-1}
+ENTRY_ADDRESS_MODE=${ENTRY_ADDRESS_MODE:-hosts}
 DOH_CERT=${DOH_CERT:-/etc/apex-fetch/certs/doh.crt}
 DOH_KEY=${DOH_KEY:-/etc/apex-fetch/certs/doh.key}
 CACHE_OWNER=${CACHE_OWNER:-subsvc}
@@ -141,7 +142,7 @@ do_run() {
         record_failure "FlyBird protocol fetch failed; cached configuration preserved"
         log "抓取失败，保留旧配置"
     else
-        resolver_args=(--in "$raw_out" --out "$resolved_out" --state "$ENTRY_STATE" --metadata "$entry_meta" --max-age-seconds "$ENTRY_MAX_AGE_SECONDS" --require-ipv4 "$ENTRY_REQUIRE_IPV4")
+        resolver_args=(--in "$raw_out" --out "$resolved_out" --state "$ENTRY_STATE" --metadata "$entry_meta" --max-age-seconds "$ENTRY_MAX_AGE_SECONDS" --require-ipv4 "$ENTRY_REQUIRE_IPV4" --address-mode "$ENTRY_ADDRESS_MODE")
         if [ -r "$DOH_CERT" ] && [ -r "$DOH_KEY" ]; then
             resolver_args+=(--cert "$DOH_CERT" --key "$DOH_KEY")
         fi

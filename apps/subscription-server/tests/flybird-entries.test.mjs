@@ -61,6 +61,33 @@ test("private-zone outages retain the verified mapping ahead of unrelated public
   assert.equal(YAML.parse(result.yaml).proxies[0].server, ip);
 });
 
+test("a private-zone outage cannot publish unverified public decoy addresses", async () => {
+  const input = document(); input.dns["proxy-server-nameserver"] = ["https://private.example.invalid/dns"];
+  await assert.rejects(resolveFlyBirdEntries(YAML.stringify(input), { now, dohLookup: failed,
+    lookup: () => assert.fail("public recursive answers do not replace authenticated private DNS"),
+  }), /publication refused/);
+});
+
+test("host-map output preserves both address families and every original node field", async () => {
+  const input = document(); input.hosts = { "other.example.invalid": "93.184.216.35" };
+  const result = await resolveFlyBirdEntries(YAML.stringify(input), { now, addressMode: "hosts", requireIPv4: true,
+    lookup: async () => [{ address: "93.184.216.34" }, { address: ip }],
+  });
+  const parsed = YAML.parse(result.yaml);
+  assert.deepEqual(parsed.proxies, input.proxies);
+  assert.deepEqual(parsed.hosts, { ...input.hosts, [nodes[0].server]: ["93.184.216.34", ip] });
+  assert.equal(parsed.dns["use-hosts"], true);
+  assert.equal(parsed.dns.ipv6, true);
+  assert.equal(result.metadata.addressMode, "hosts");
+  assert.equal(result.metadata.changedServerCount, 0);
+});
+
+test("invalid host-map output cannot bypass address validation", async () => {
+  const input = document(); input.hosts = [];
+  await assert.rejects(resolveFlyBirdEntries(YAML.stringify(input), { addressMode: "hosts" }), /hosts mapping/);
+  await assert.rejects(resolveFlyBirdEntries(YAML.stringify(document()), { addressMode: "unknown" }), /address mode/);
+});
+
 test("preserves implicit TLS hostname when replacing a server with an IP", async () => {
   const input = document(); delete input.proxies[0].sni;
   const result = await resolveFlyBirdEntries(YAML.stringify(input), { now, lookup: async () => [{ address: "93.184.216.34" }, { address: ip }] });

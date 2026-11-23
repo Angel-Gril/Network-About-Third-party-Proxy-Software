@@ -152,6 +152,11 @@ async function queryDoh(endpoint, host, type, options) {
 export async function resolveFlyBirdEntries(text, options = {}) {
   const config = YAML.parse(text, { uniqueKeys: true, maxAliasCount: 100 });
   if (!config || !Array.isArray(config.proxies) || !config.proxies.length) throw new Error("FlyBird has no proxy entries");
+  const addressMode = options.addressMode ?? "literal";
+  if (!["literal", "hosts"].includes(addressMode)) throw new Error("Invalid entry address mode");
+  if (config.hosts && (Array.isArray(config.hosts) || typeof config.hosts !== "object")) {
+    throw new Error("Invalid FlyBird hosts mapping");
+  }
   const groups = new Map();
   const literalHosts = new Set();
   for (const proxy of config.proxies) {
@@ -204,7 +209,10 @@ export async function resolveFlyBirdEntries(text, options = {}) {
     if (!addresses.length && endpoints.length && cacheReady) {
       addresses = cached.addresses; usedCache = true;
     }
-    if (!addresses.length) {
+    // Public recursive DNS can return plausible but unusable decoy addresses
+    // for a provider's private entry zone. Do not promote those answers when
+    // the authenticated resolver failed and no verified mapping is available.
+    if (!addresses.length && !endpoints.length) {
       source = "system-dns";
       try {
         addresses = (await lookup(host)).map(value => typeof value === "string" ? value : value.address).filter(usableEntryAddress);
@@ -224,18 +232,24 @@ export async function resolveFlyBirdEntries(text, options = {}) {
       throw Object.assign(new Error("FlyBird has no validated IPv4 entry; publication refused"), { code: "ENTRY_IPV4_REQUIRED" });
     }
     if (addresses.every(address => isIP(address) === 6)) ipv6OnlyHostCount++;
-    // Prefer IPv4 when available; IPv6-only entries must remain usable on IPv6 clients.
+    // The host-map output retains every address and the provider's IP preference.
+    // Literal output is retained for consumers that cannot preserve hosts.
     addresses.sort((a, b) => isIP(a) - isIP(b) || a.localeCompare(b));
     state.hosts[host] = { addresses, binding, observedAt, source };
     observations.push(observedAt);
-    for (const proxy of proxies) {
-      if (proxy.type === "anytls" && !proxy.sni && !proxy.servername) proxy.sni = host;
-      else if (proxy.tls === true && !proxy.servername && !proxy.sni) proxy.servername = host;
-      proxy.server = addresses[0]; changedServerCount++;
+    if (addressMode === "hosts") {
+      config.hosts = { ...config.hosts, [host]: addresses };
+      config.dns = { ...config.dns, "use-hosts": true };
+    } else {
+      for (const proxy of proxies) {
+        if (proxy.type === "anytls" && !proxy.sni && !proxy.servername) proxy.sni = host;
+        else if (proxy.tls === true && !proxy.servername && !proxy.sni) proxy.servername = host;
+        proxy.server = addresses[0]; changedServerCount++;
+      }
     }
   }
   return { yaml: YAML.stringify(config, { lineWidth: 0 }), state,
-    metadata: { resolvedHostCount: groups.size + literalHosts.size, upstreamLiteralHostCount: literalHosts.size,
+    metadata: { addressMode, resolvedHostCount: groups.size + literalHosts.size, upstreamLiteralHostCount: literalHosts.size,
       liveHostCount, cachedHostCount, ipv6OnlyHostCount,
       changedServerCount, cachedServerCount, oldestAddressObservation: observations.sort()[0] || null, maxCacheAgeSeconds: maxAgeMs / 1000 } };
 }
@@ -255,6 +269,7 @@ async function main() {
   }
   const result = await resolveFlyBirdEntries(await fs.readFile(options.in, "utf8"), {
     ...identity, state: await readJson(options.state, { schemaVersion: 1, hosts: {} }),
+    addressMode: options["address-mode"] || "hosts",
     requireIPv4: options["require-ipv4"] !== "0",
     maxAgeMs: options["max-age-seconds"] ? Number(options["max-age-seconds"]) * 1000 : undefined,
   });

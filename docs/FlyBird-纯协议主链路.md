@@ -69,9 +69,9 @@ API 和订阅使用两套独立的 mTLS 身份：
 
 发布阶段应用 [网络模板](../apps/subscription-server/templates/flybird-network.yaml)：
 
-- 上游的节点专用 DNS、启动解析器和 IPv6 设置保持原样；网站域名仍通过 `节点选择` 访问 Cloudflare/Google DoH。入口预解析由 `flybird-entries.mjs` 在渲染前完成，避免第三方导入器丢失 DNS 定义后无法引导。
+- 上游的节点专用 DNS、启动解析器和 IPv6 设置保持原样；网站域名仍通过 `节点选择` 访问 Cloudflare/Google DoH。入口预解析由 `flybird-entries.mjs` 在渲染前完成；Mihomo 发布保留域名并写入有效地址映射。
 - 国内 GeoSite 域名使用国内 DoH；`agentrouter.org`、`anyrouter.top` 显式使用代理 DoH，并在 GeoIP 规则前匹配 `AI服务`。
-- 保留上游 `dns.ipv6`；没有上游设置时默认开启。可用 IPv4 优先，无 IPv4 时保留 IPv6 入口；后者要求客户端有 IPv6 连通性。节点认证、SNI、`ip-version` 和 TLS 参数保持原样。
+- 保留上游 `dns.ipv6`；没有上游设置时默认开启。映射保留全部有效 IPv4/IPv6，客户端按原 `ip-version` 选择地址。节点认证、SNI 和 TLS 参数保持原样。
 - 启用 HTTP/TLS/QUIC 嗅探、纯 IP 解析和目标域名恢复；保留上游局域网、STUN 的 Fake-IP 排除项与嗅探排除项。
 
 模板不启用宿主机 TUN，不修改本机系统 DNS。客户端更新订阅后应重新加载配置，才能应用新网络策略。
@@ -113,10 +113,12 @@ root 服务入口的版本化包装器位于 `apps/subscription-server/deploy/ap
 
 解析器优先使用订阅中的 HTTPS 节点 DNS，发送 RFC8484 GET，并在配置了 DoH 身份时提供客户端证书。必须验证 TLS、DNS 问题名/类型和实际 A/AAAA 答案；解析器主机名能解析不算节点解析成功。不会跟随重定向发送身份，也不允许 Fake-IP、本地或文档地址成为入口。
 
+上游指定专用节点 DNS 时，其查询失败只能使用有效的已验证缓存，不能拿无关公共递归器返回的地址替代。没有专用节点 DNS 的配置才允许系统解析路径。DNS 报文格式正确和地址属于公网，不等于该地址已通过节点连接验证。
+
 新地址不可得时，仅允许恢复同一原域名、相同整组节点认证/端口/SNI/传输指纹的近期缓存。缓存默认最长 24 小时，可用 `ENTRY_MAX_AGE_SECONDS` 配置，最多七天。失败不会更新地址观察时间；身份变化、缓存过期或缺失时拒绝发布并保留原订阅。可信管理员可以导入经实际客户端转发验证的地址，缓存位于私有状态文件，不进入源码。
 
 部署可配置 `ENTRY_STATE`（默认 `/var/lib/apex-fetch/entry-addresses.json`）、`DOH_CERT` 和 `DOH_KEY`。身份文件缺失时不代表私有解析已验证；查询失败只能使用符合绑定与时限的缓存。`flybird.json` 的 `entryResolution` 明确区分实时解析、缓存恢复、观察日期及 IPv6-only 入口，`lastWarning` 报告降级状态。完整性验证、DNS 地址解析与实际代理转发仍分别验收。
 
-仅复原 DNS 字段不能保证所有客户端工作：部分导入器只保留节点，部分节点区使用私有 DNS。发布的是本轮解析得到的字面入口地址，并保留原 TLS 主机名。上游无法提供新地址时，缓存回退不等于完成了新的上游 DNS 验证。
+仅复原 DNS 字段不能保证所有客户端工作：部分导入器只保留节点，部分节点区使用私有 DNS。Mihomo 分发默认 `ENTRY_ADDRESS_MODE=hosts`：保留入口域名和全部节点字段，将有效的双栈结果写入 YAML `hosts`，并启用 `dns.use-hosts`。不会将全部节点锁定到一个 IPv4 地址。需要字面地址的消费者可显式选择 `literal`，该模式只选一个地址，必须单独验证其网络条件。丢弃 DNS 和 hosts 的导入器仍需独立适配，不能声称已经兼容。上游无法提供新地址时，缓存回退不等于完成了新的上游 DNS 验证。
 
 通用分发默认 `ENTRY_REQUIRE_IPV4=1`：每个入口必须取得可用格式的 IPv4 地址。仅有 IPv6 的候选会以独立错误拒绝发布并保留现有缓存，不能据此宣布普通 IPv4 设备恢复。仅为明确支持 IPv6 的独立分发环境测试时，才显式设置为 0；这不等于官方缺少 IPv4。候选地址的 DNS 验证和真实协议转发仍分开记录。
