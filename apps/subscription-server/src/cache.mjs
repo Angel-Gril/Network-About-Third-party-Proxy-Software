@@ -41,8 +41,10 @@ export async function atomicWrite(filePath, content, mode = 0o600) {
       catch (error) {
         // Windows readers/AV can briefly hold the destination. Never delete it
         // to make replacement succeed: a persistent error must preserve it.
-        if (attempt >= 3 || !["EPERM", "EBUSY"].includes(error.code)) throw error;
-        await delay(10 * 2 ** attempt);
+        const maximumRetries = process.platform === "win32" ? 6 : 3;
+        if (attempt >= maximumRetries || !["EPERM", "EBUSY"].includes(error.code)) throw error;
+        // Avoid repeatedly colliding with a short-period Windows reader.
+        await delay(10 * 2 ** attempt + (process.platform === "win32" ? 1 + crypto.randomInt(8) : 0));
       }
     }
   } finally {

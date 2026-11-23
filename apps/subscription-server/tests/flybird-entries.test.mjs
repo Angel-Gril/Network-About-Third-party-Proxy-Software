@@ -61,11 +61,43 @@ test("private-zone outages retain the verified mapping ahead of unrelated public
   assert.equal(YAML.parse(result.yaml).proxies[0].server, ip);
 });
 
-test("a private-zone outage cannot publish unverified public decoy addresses", async () => {
+test("a private-zone outage rejects public candidates that fail node TLS validation", async () => {
   const input = document(); input.dns["proxy-server-nameserver"] = ["https://private.example.invalid/dns"];
+  let calls = 0;
   await assert.rejects(resolveFlyBirdEntries(YAML.stringify(input), { now, dohLookup: failed,
-    lookup: () => assert.fail("public recursive answers do not replace authenticated private DNS"),
+    lookup: async () => { calls++; return [{ address: "93.184.216.34" }]; }, probeAddress: async () => false,
   }), /publication refused/);
+  assert.equal(calls, 1);
+});
+
+test("a configured private DoH does not block TLS-validated public fallback and caching", async () => {
+  const input = document(); input.dns["proxy-server-nameserver"] = ["https://private.example.invalid/dns"];
+  const checked = [];
+  const result = await resolveFlyBirdEntries(YAML.stringify(input), { now, dohLookup: failed, addressMode: "hosts", requireIPv4: true,
+    lookup: async () => [{ address: "198.18.2.3" }, { address: "93.184.216.34" }],
+    probeAddress: async (address, host, proxies) => { checked.push(address); assert.equal(host, nodes[0].server);
+      assert.deepEqual(proxies, nodes); return true; },
+  });
+  assert.deepEqual(checked, ["93.184.216.34"]);
+  assert.deepEqual(YAML.parse(result.yaml).proxies, nodes);
+  assert.deepEqual(result.state.hosts[nodes[0].server].addresses, ["93.184.216.34"]);
+  assert.equal(result.state.hosts[nodes[0].server].source, "public-dns-tls-validated");
+  assert.equal(result.metadata.publicFallbackHostCount, 1);
+  assert.equal(result.metadata.tlsValidatedPublicAddressCount, 1);
+});
+
+test("explicit public resolvers can recover a failed system lookup without retrying rejected IPs", async () => {
+  const input = document(); input.dns["proxy-server-nameserver"] = ["https://private.example.invalid/dns"];
+  input.dns["default-nameserver"] = ["https://9.9.9.9/dns-query", "https://1.1.1.1/dns-query"];
+  const checked = [];
+  const result = await resolveFlyBirdEntries(YAML.stringify(input), { now, dohLookup: failed,
+    lookup: async () => [{ address: "93.184.216.35" }],
+    publicDohLookup: async (endpoint, _host, type) => type === 1
+      ? endpoint.includes("9.9.9.9") ? ["93.184.216.35"] : ["93.184.216.34"] : [],
+    probeAddress: async address => { checked.push(address); return address === "93.184.216.34"; },
+  });
+  assert.deepEqual(checked, ["93.184.216.35", "93.184.216.34"]);
+  assert.equal(result.metadata.publicFallbackHostCount, 1);
 });
 
 test("host-map output preserves both address families and every original node field", async () => {

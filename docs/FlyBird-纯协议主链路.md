@@ -109,16 +109,18 @@ python scripts/check_public_files.py --staged
 
 ## 节点入口解析与故障回退
 
-root 服务入口的版本化包装器位于 `apps/subscription-server/deploy/apex-fetch.sh`，仍调用部署中现有的纯协议 Python 抓取器。包装器先调用 `flybird-entries.mjs`，再调用 renderer；定时任务和管理页手动刷新共用这条路径。没有新增客户端、TUN 或常驻 DNS 服务。
+root 服务入口的版本化包装器位于 `apps/subscription-server/deploy/apex-fetch.sh`，仍调用部署中现有的纯协议 Python 抓取器。定时任务和管理页手动刷新共用这条路径，没有新增客户端、TUN 或常驻 DNS 服务。认证、验签、解密通过后，`publish-flybird.mjs` 先独立保存 `RAW_OUT`（默认 `/var/lib/apex-fetch/sub.raw.yaml`）及其元数据，再进行入口增强和分发渲染。
 
 解析器优先使用订阅中的 HTTPS 节点 DNS，发送 RFC8484 GET，并在配置了 DoH 身份时提供客户端证书。必须验证 TLS、DNS 问题名/类型和实际 A/AAAA 答案；解析器主机名能解析不算节点解析成功。不会跟随重定向发送身份，也不允许 Fake-IP、本地或文档地址成为入口。
 
-上游指定专用节点 DNS 时，其查询失败只能使用有效的已验证缓存，不能拿无关公共递归器返回的地址替代。没有专用节点 DNS 的配置才允许系统解析路径。DNS 报文格式正确和地址属于公网，不等于该地址已通过节点连接验证。
+专用节点 DNS 存在不再禁止公共回退。专用查询和匹配缓存未能提供可接受结果时，允许系统解析及上游 default-nameserver 中的公开 HTTPS 解析器提供候选；这些公共服务不接收飞鸟 mTLS 身份。私有域名的公共候选必须通过原 SNI 的代表性节点 TLS 校验，才可写入地址映射和缓存；失败候选不会因换一个解析器而反复探测。该检查不等于全部节点已经通过 AnyTLS 认证或实际转发。Fake-IP、本地和文档地址仍拒绝。
 
-新地址不可得时，仅允许恢复同一原域名、相同整组节点认证/端口/SNI/传输指纹的近期缓存。缓存默认最长 24 小时，可用 `ENTRY_MAX_AGE_SECONDS` 配置，最多七天。失败不会更新地址观察时间；身份变化、缓存过期或缺失时拒绝发布并保留原订阅。可信管理员可以导入经实际客户端转发验证的地址，缓存位于私有状态文件，不进入源码。
+新地址不可得时，仅允许恢复同一原域名、相同整组节点认证/端口/SNI/传输指纹的近期缓存。缓存默认最长 24 小时，可用 `ENTRY_MAX_AGE_SECONDS` 配置，最多七天。失败不会更新地址观察时间；身份变化、缓存过期或缺失时不得生成虚假的增强映射。可信管理员可以导入经实际客户端转发验证的地址，缓存位于私有状态文件，不进入源码。
 
-部署可配置 `ENTRY_STATE`（默认 `/var/lib/apex-fetch/entry-addresses.json`）、`DOH_CERT` 和 `DOH_KEY`。身份文件缺失时不代表私有解析已验证；查询失败只能使用符合绑定与时限的缓存。`flybird.json` 的 `entryResolution` 明确区分实时解析、缓存恢复、观察日期及 IPv6-only 入口，`lastWarning` 报告降级状态。完整性验证、DNS 地址解析与实际代理转发仍分别验收。
+入口增强不可用时，仍将本轮新原始配置渲染为 `client-dns` 分发：保留域名与节点参数，在专用节点 DNS 之外提供公开 DNS 候选，由客户端解析和执行正常 TLS 校验。不会加入未经验证的 IP。主订阅与 `OUT` 更新；独立的 `ENHANCED_OUT`（默认 `/var/lib/apex-fetch/sub.enhanced.yaml`）只在增强成功时更新。原始提取与分发失败分别记录，配置合法不代表客户端网络已验证可用。
+
+部署可配置 `ENTRY_STATE`（默认 `/var/lib/apex-fetch/entry-addresses.json`）、`DOH_CERT` 和 `DOH_KEY`。身份文件缺失时不代表私有解析已验证。`flybird.json` 的 `publicationMode`、`rawFetchedAt` 和 `enhancement` 区分原始更新与入口增强；`entryResolution` 区分专用解析、经 TLS 校验的公共回退和近期缓存，`lastWarning` 报告降级状态。管理页将 `client-dns` 显示为已更新且入口 DNS 委托客户端，不冒充地址增强已完成。完整性验证、DNS 地址解析与实际代理转发分别验收。
 
 仅复原 DNS 字段不能保证所有客户端工作：部分导入器只保留节点，部分节点区使用私有 DNS。Mihomo 分发默认 `ENTRY_ADDRESS_MODE=hosts`：保留入口域名和全部节点字段，将有效的双栈结果写入 YAML `hosts`，并启用 `dns.use-hosts`。不会将全部节点锁定到一个 IPv4 地址。需要字面地址的消费者可显式选择 `literal`，该模式只选一个地址，必须单独验证其网络条件。丢弃 DNS 和 hosts 的导入器仍需独立适配，不能声称已经兼容。上游无法提供新地址时，缓存回退不等于完成了新的上游 DNS 验证。
 
-通用分发默认 `ENTRY_REQUIRE_IPV4=1`：每个入口必须取得可用格式的 IPv4 地址。仅有 IPv6 的候选会以独立错误拒绝发布并保留现有缓存，不能据此宣布普通 IPv4 设备恢复。仅为明确支持 IPv6 的独立分发环境测试时，才显式设置为 0；这不等于官方缺少 IPv4。候选地址的 DNS 验证和真实协议转发仍分开记录。
+地址增强默认 `ENTRY_REQUIRE_IPV4=1`：每个入口必须取得可接受的 IPv4 地址。仅有 IPv6 的候选会拒绝替换增强产物，但不再阻止本轮原始和域名分发更新。明确支持 IPv6 的独立增强环境可显式设置为 0；这不等于官方缺少 IPv4。候选 DNS、TLS 校验与真实代理转发仍分开记录。

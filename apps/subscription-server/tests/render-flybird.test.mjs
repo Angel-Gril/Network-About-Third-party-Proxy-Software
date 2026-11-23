@@ -161,3 +161,24 @@ test("network template protects application DNS and preserves node TLS credentia
     await fs.rm(root, { recursive: true, force: true });
   }
 });
+
+test("client DNS publication adds fallback resolvers without injecting IPs or changing nodes", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "render-client-dns-"));
+  try {
+    const source = YAML.parse(blockStyleRaw);
+    source.dns = { ipv6: true, "default-nameserver": ["https://9.9.9.9/dns-query"],
+      "proxy-server-nameserver": ["https://private.example.invalid/grant"] };
+    const input = path.join(root, "raw.yaml"), output = path.join(root, "out.yaml");
+    await fs.writeFile(input, YAML.stringify(source));
+    const result = spawnSync(process.execPath, [script, "--in", input, "--out", output,
+      "--base-url", "https://sub.example.invalid", "--client-dns-fallback", "1"], { encoding: "utf8" });
+    assert.equal(result.status, 0, result.stderr);
+    const actual = YAML.parse(await fs.readFile(output, "utf8"));
+    assert.deepEqual(actual.proxies, source.proxies);
+    assert.equal(actual.hosts, undefined);
+    assert.equal(actual.dns.ipv6, true);
+    assert.ok(actual.dns["proxy-server-nameserver"].includes(source.dns["proxy-server-nameserver"][0]));
+    assert.ok(actual.dns["proxy-server-nameserver"].includes("https://9.9.9.9/dns-query"));
+    assert.ok(actual.dns["proxy-server-nameserver"].includes("https://doh.pub/dns-query"));
+  } finally { await fs.rm(root, { recursive: true, force: true }); }
+});

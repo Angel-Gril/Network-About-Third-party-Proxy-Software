@@ -73,7 +73,7 @@ function validateDistribution(text) {
   };
 }
 
-function normalizeProxyEntries(source, network) {
+function normalizeProxyEntries(source, network, clientDnsFallback = false) {
   let config;
   try {
     config = YAML.parse(source, { uniqueKeys: true, maxAliasCount: 100 });
@@ -100,6 +100,15 @@ function normalizeProxyEntries(source, network) {
   for (const key of ["ipv6", "default-nameserver", "proxy-server-nameserver"]) {
     if (Object.hasOwn(config.dns || {}, key)) preamble.dns[key] = config.dns[key];
   }
+  if (clientDnsFallback) {
+    // This mode adds resolver choices, never unverified IP mappings. The client
+    // still checks the node's original TLS identity when it connects.
+    preamble.dns["proxy-server-nameserver"] = [...new Set([
+      ...(preamble.dns["proxy-server-nameserver"] || []),
+      ...network.dns["proxy-server-nameserver"],
+      ...(config.dns?.["default-nameserver"] || []).filter(value => typeof value === "string" && value.startsWith("https://")),
+    ])];
+  }
   // A legacy fallback must not bypass the protected application resolver.
   delete preamble.dns.fallback;
   delete preamble.dns["fallback-filter"];
@@ -119,13 +128,13 @@ function normalizeProxyEntries(source, network) {
     .join("\n")}\n` };
 }
 
-export async function renderFlyBirdSubscription(source, baseUrl) {
+export async function renderFlyBirdSubscription(source, baseUrl, options = {}) {
   const origin = new URL(baseUrl);
   if (origin.protocol !== "https:" || origin.pathname !== "/" || origin.search || origin.hash) {
     throw new Error("FlyBird distribution base URL must be an HTTPS origin");
   }
   const network = YAML.parse(await fs.readFile(new URL("../templates/flybird-network.yaml", import.meta.url), "utf8"));
-  const normalized = normalizeProxyEntries(source, network);
+  const normalized = normalizeProxyEntries(source, network, options.clientDnsFallback === true);
   const rendered = enhanceMihomoConfig(normalized.yaml, origin.origin).replace(/^rules:\s*$/m,
     `rules:\n${network["prepend-rules"].map(rule => `  - ${JSON.stringify(rule)}`).join("\n")}`);
   if (!isDeepStrictEqual(YAML.parse(rendered).proxies, normalized.proxies)) {
@@ -155,7 +164,12 @@ async function main() {
   }
   if (!options.in || !options.out || !options["base-url"]) throw new Error(usage());
   const source = await fs.readFile(options.in, "utf8");
-  const result = await renderFlyBirdSubscription(source, options["base-url"]);
+  if (options["client-dns-fallback"] && !["0", "1"].includes(options["client-dns-fallback"])) {
+    throw new Error("Invalid client DNS fallback option");
+  }
+  const result = await renderFlyBirdSubscription(source, options["base-url"], {
+    clientDnsFallback: options["client-dns-fallback"] === "1",
+  });
   await atomicWrite(options.out, result.yaml);
   const { yaml: _yaml, ...counts } = result;
   process.stdout.write(`${JSON.stringify({ ok: true, ...counts, out: options.out })}\n`);

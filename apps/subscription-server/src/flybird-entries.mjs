@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import dns from "node:dns/promises";
 import fs from "node:fs/promises";
 import https from "node:https";
+import tls from "node:tls";
 import { isIP } from "node:net";
 import { pathToFileURL } from "node:url";
 import YAML from "yaml";
@@ -118,7 +119,8 @@ export function dnsAddresses(data, host, type) {
 
 async function queryDoh(endpoint, host, type, options) {
   const url = new URL(endpoint.split("#", 1)[0]);
-  if (url.protocol !== "https:" || url.username || url.password || isIP(url.hostname)) {
+  if (url.protocol !== "https:" || url.username || url.password ||
+      isIP(url.hostname) && (!options.publicResolver || !usableEntryAddress(url.hostname))) {
     throw new Error("Invalid upstream node resolver");
   }
   url.searchParams.set("dns", dnsQuestion(host, type).toString("base64url"));
@@ -147,6 +149,29 @@ async function queryDoh(endpoint, host, type, options) {
     request.once("close", () => clearTimeout(timer));
     request.once("error", () => reject(new Error("Node DoH connection failed")));
   });
+}
+
+async function verifyPublicAddress(address, host, proxies, timeoutMs = 2500) {
+  const candidates = proxies.filter(proxy => ["anytls", "trojan"].includes(proxy.type) ||
+    proxy.tls === true && !proxy["reality-opts"]);
+  const samples = [...new Set([0, Math.floor(candidates.length / 2), candidates.length - 1])]
+    .map(index => candidates[index]).filter(Boolean);
+  for (const proxy of samples) {
+    const port = Number(proxy.port);
+    if (!Number.isInteger(port) || port < 1 || port > 65535) continue;
+    const ok = await new Promise(resolve => {
+      let socket, done = false;
+      const finish = value => { if (done) return; done = true; socket?.destroy(); resolve(value); };
+      try {
+        socket = tls.connect({ host: address, port, servername: proxy.sni || proxy.servername || host,
+          rejectUnauthorized: true, ALPNProtocols: Array.isArray(proxy.alpn) ? proxy.alpn : undefined }, () => finish(true));
+        socket.setTimeout(timeoutMs, () => finish(false));
+        socket.once("error", () => finish(false));
+      } catch { finish(false); }
+    });
+    if (ok) return true;
+  }
+  return false;
 }
 
 export async function resolveFlyBirdEntries(text, options = {}) {
@@ -184,7 +209,17 @@ export async function resolveFlyBirdEntries(text, options = {}) {
     typeof value === "string" && value.startsWith("https://")) || [];
   const lookup = options.lookup || (host => dns.lookup(host, { all: true }));
   const dohLookup = options.dohLookup || ((endpoint, host, type) => queryDoh(endpoint, host, type, options));
+  // Public bootstrap resolvers never receive the provider's mTLS identity.
+  const publicDohLookup = options.publicDohLookup || ((endpoint, host, type) => queryDoh(endpoint, host, type,
+    { timeoutMs: options.timeoutMs, publicResolver: true }));
+  const probeAddress = options.probeAddress || ((address, host, proxies) =>
+    verifyPublicAddress(address, host, proxies, options.probeTimeoutMs));
+  const publicResolvers = [...new Set((config.dns?.["default-nameserver"] || []).filter(value => {
+    try { const url = new URL(value); return url.protocol === "https:" && usableEntryAddress(url.hostname); }
+    catch { return false; }
+  }))].slice(0, 4);
   let liveHostCount = 0, cachedHostCount = 0, changedServerCount = 0, cachedServerCount = 0;
+  let publicFallbackHostCount = 0, tlsValidatedPublicAddressCount = 0;
   let ipv6OnlyHostCount = [...literalHosts].filter(address => isIP(address) === 6).length;
   const observations = [];
   for (const [host, proxies] of groups) {
@@ -206,17 +241,46 @@ export async function resolveFlyBirdEntries(text, options = {}) {
     }
     // A previously verified private-zone mapping is stronger evidence than an
     // unrelated recursive resolver's answer after the provider DoH has failed.
-    if (!addresses.length && endpoints.length && cacheReady) {
+    if (!addresses.length && endpoints.length && cacheReady &&
+        (!options.requireIPv4 || cached.addresses.some(address => isIP(address) === 4))) {
       addresses = cached.addresses; usedCache = true;
     }
-    // Public recursive DNS can return plausible but unusable decoy addresses
-    // for a provider's private entry zone. Do not promote those answers when
-    // the authenticated resolver failed and no verified mapping is available.
-    if (!addresses.length && !endpoints.length) {
+    // A private resolver being configured must not disable validated fallback.
+    if (!addresses.length || options.requireIPv4 && !addresses.some(address => isIP(address) === 4)) {
+      const upstreamAddresses = addresses;
+      let candidates = [];
+      const checked = new Map();
+      const accept = async values => {
+        const unique = [...new Set(values.filter(usableEntryAddress))].slice(0, 8);
+        if (!endpoints.length) return unique;
+        const verified = [];
+        for (const address of unique) {
+          if (!checked.has(address)) {
+            try { checked.set(address, Boolean(await probeAddress(address, host, proxies))); }
+            catch { checked.set(address, false); }
+          }
+          if (checked.get(address)) verified.push(address);
+        }
+        return verified;
+      };
       source = "system-dns";
       try {
-        addresses = (await lookup(host)).map(value => typeof value === "string" ? value : value.address).filter(usableEntryAddress);
+        candidates = (await lookup(host)).map(value => typeof value === "string" ? value : value.address).filter(usableEntryAddress);
       } catch { /* A failed resolver is not evidence that a node is valid. */ }
+      candidates = await accept(candidates);
+      for (const endpoint of publicResolvers) {
+        if (candidates.length) break;
+        const replies = await Promise.allSettled([1, 28].map(type => publicDohLookup(endpoint, host, type)));
+        if (replies.some(reply => reply.status === "rejected" && reply.reason?.code === "UPSTREAM_RATE_LIMIT")) {
+          throw new Error("FlyBird public resolver rate limited; publication refused");
+        }
+        candidates = await accept(replies.flatMap(reply => reply.status === "fulfilled" ? reply.value : []));
+      }
+      if (endpoints.length) {
+        if (candidates.length) { publicFallbackHostCount++; tlsValidatedPublicAddressCount += candidates.length; }
+        source = upstreamAddresses.length ? "upstream-doh+public-dns-tls-validated" : "public-dns-tls-validated";
+      }
+      addresses = [...upstreamAddresses, ...candidates];
     }
     let observedAt = new Date(now).toISOString();
     if (!addresses.length) {
@@ -251,6 +315,7 @@ export async function resolveFlyBirdEntries(text, options = {}) {
   return { yaml: YAML.stringify(config, { lineWidth: 0 }), state,
     metadata: { addressMode, resolvedHostCount: groups.size + literalHosts.size, upstreamLiteralHostCount: literalHosts.size,
       liveHostCount, cachedHostCount, ipv6OnlyHostCount,
+      publicFallbackHostCount, tlsValidatedPublicAddressCount,
       changedServerCount, cachedServerCount, oldestAddressObservation: observations.sort()[0] || null, maxCacheAgeSeconds: maxAgeMs / 1000 } };
 }
 

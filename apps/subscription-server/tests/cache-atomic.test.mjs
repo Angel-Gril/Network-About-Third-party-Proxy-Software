@@ -24,16 +24,17 @@ test("a transient destination lock retries replacement without removing the old 
     const target = path.join(root, "current");
     await fs.writeFile(target, "last-good");
     let attempts = 0;
+    const lockedAttempts = process.platform === "win32" ? 4 : 1;
     fs.rename = async (...args) => {
       attempts++;
-      if (attempts === 1) {
+      if (attempts <= lockedAttempts) {
         assert.equal(await fs.readFile(target, "utf8"), "last-good");
         throw Object.assign(new Error("synthetic Windows sharing lock"), { code: "EPERM" });
       }
       return rename(...args);
     };
     await atomicWrite(target, "new-value");
-    assert.equal(attempts, 2);
+    assert.equal(attempts, lockedAttempts + 1);
     assert.equal(await fs.readFile(target, "utf8"), "new-value");
     assert.deepEqual(await fs.readdir(root), ["current"]);
   } finally { fs.rename = rename; await fs.rm(root, { recursive: true, force: true }); }

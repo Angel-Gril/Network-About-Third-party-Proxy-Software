@@ -22,6 +22,10 @@ MIN_NODES=${MIN_NODES:-20}
 umask 077
 NODE=${NODE:-/usr/local/bin/node}
 RENDERER=${RENDERER:-/opt/private-subscription/apps/subscription-server/src/render-flybird.mjs}
+PUBLISHER=${PUBLISHER:-$(dirname "$RENDERER")/publish-flybird.mjs}
+RAW_OUT=${RAW_OUT:-${OUT%.yaml}.raw.yaml}
+RAW_METADATA=${RAW_METADATA:-${RAW_OUT}.json}
+ENHANCED_OUT=${ENHANCED_OUT:-${OUT%.yaml}.enhanced.yaml}
 PUBLIC_DOMAIN=${PUBLIC_DOMAIN:-}
 ENTRY_RESOLVER=${ENTRY_RESOLVER:-$(dirname "$RENDERER")/flybird-entries.mjs}
 ENTRY_STATE=${ENTRY_STATE:-/var/lib/apex-fetch/entry-addresses.json}
@@ -45,46 +49,6 @@ except ImportError:
 d = yaml.safe_load(open(sys.argv[1], encoding="utf-8"))
 print(len((d or {}).get("proxies") or []))
 PY
-}
-
-publish_private_subscription() {
-    [ "${PUBLISH_PRIVATE_SUBSCRIPTION:-auto}" = "1" ] || {
-        [ "$PUBLISH_PRIVATE_SUBSCRIPTION" = "auto" ] && [ -d "$PRIVATE_CACHE_DIR" ] || return 0
-    }
-    [ -d "$PRIVATE_CACHE_DIR" ] || { log "Private Subscription 缓存目录不存在：$PRIVATE_CACHE_DIR"; return 0; }
-    local target="$PRIVATE_CACHE_DIR/flybird.yaml" previous="$PRIVATE_CACHE_DIR/flybird.previous.yaml"
-    local metadata="$PRIVATE_CACHE_DIR/flybird.json" tmp_yaml tmp_meta sha count updated changed
-    tmp_yaml="$target.apex.tmp"; tmp_meta="$metadata.apex.tmp"
-    sha=$(sha256sum "$OUT" | awk '{print $1}')
-    count=$(count_nodes "$OUT")
-    updated=$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ); changed=true
-    if [ -f "$target" ] && cmp -s "$OUT" "$target"; then
-        changed=false
-    elif [ -f "$target" ]; then
-        install -o "$CACHE_OWNER" -g "$CACHE_OWNER" -m 0640 "$target" "$previous" || return 1
-    fi
-    install -o "$CACHE_OWNER" -g "$CACHE_OWNER" -m 0640 "$OUT" "$tmp_yaml" || return 1
-    "$PYTHON" - "$1" "$sha" "$count" "$updated" "$changed" > "$tmp_meta" <<'PYMETA' || return 1
-import json, sys
-from pathlib import Path
-entry = json.loads(Path(sys.argv[1]).read_text())
-warnings = []
-if entry.get("cachedHostCount"):
-    warnings.append("Upstream node DNS unavailable; using a matching previously observed entry cache")
-if entry.get("ipv6OnlyHostCount"):
-    warnings.append("Current entry addresses require client IPv6 connectivity")
-print(json.dumps({"schemaVersion": 1, "provider": "flybird", "updatedAt": sys.argv[4],
-    "changed": sys.argv[5] == "true", "sha256": sys.argv[2], "proxyCount": int(sys.argv[3]),
-    "validatedHostCount": entry.get("liveHostCount", 0),
-    "recoveredServerCount": entry.get("cachedServerCount", 0), "delegatedHostCount": 0,
-    "entryResolution": entry, "lastWarning": "; ".join(warnings) or None,
-    "lastError": None, "source": "apex-pure-protocol"}))
-PYMETA
-    chown "$CACHE_OWNER:$CACHE_OWNER" "$tmp_meta" || return 1
-    chmod 0600 "$tmp_meta" || return 1
-    mv -f "$tmp_yaml" "$target" || return 1
-    mv -f "$tmp_meta" "$metadata" || return 1
-    log "已同步 Private Subscription：$target（$count 节点，changed=$changed）"
 }
 
 mkdir -p "$LOGDIR" "$(dirname "$OUT")"
@@ -128,44 +92,70 @@ do_run() {
     [ -n "$PUBLIC_DOMAIN" ] || { log "缺少 PUBLIC_DOMAIN，无法生成分组规则中的 GeoX URL"; exit 2; }
     [ -r "$RENDERER" ] || { log "缺少 FlyBird 渲染器 $RENDERER"; exit 2; }
     [ -x "$NODE" ] || { log "缺少 Node.js 可执行文件 $NODE"; exit 2; }
-    [ -r "$ENTRY_RESOLVER" ] || { log "缺少入口解析器 $ENTRY_RESOLVER"; exit 2; }
+    [ -r "$PUBLISHER" ] || { log "缺少 FlyBird 发布器 $PUBLISHER"; exit 2; }
     WORKDIR=$(mktemp -d "${OUT}.refresh.XXXXXX") || exit 1
     trap cleanup EXIT
     trap 'exit 130' INT
     trap 'exit 143' TERM
     raw_out="$WORKDIR/raw.yaml"
     resolved_out="$WORKDIR/resolved.yaml"
+    candidate_out="$WORKDIR/distribution.yaml"
     entry_meta="$WORKDIR/entry.json"
     log "开始抓取"
     rc=1
-    if ! "$PYTHON" "$FETCHER" --config "$CONF" --out "$raw_out" 2>&1 | tee -a "$LOG"; then
+    if ! "$PYTHON" "$FETCHER" --config "$CONF" --out "$raw_out" 2>&1 |
+        sed -E 's/(access_key|token|password)=[^[:space:]]+/\1=<redacted>/g' | tee -a "$LOG"; then
         record_failure "FlyBird protocol fetch failed; cached configuration preserved"
         log "抓取失败，保留旧配置"
     else
+        if ! "$NODE" "$PUBLISHER" raw --in "$raw_out" --out "$RAW_OUT" --metadata "$RAW_METADATA" 2>&1 | tee -a "$LOG"; then
+            record_failure "FlyBird raw configuration could not be saved; published configuration preserved"
+            log "原始配置保存失败"
+            exit 1
+        fi
+        log "原始配置已独立保存，开始入口增强"
         resolver_args=(--in "$raw_out" --out "$resolved_out" --state "$ENTRY_STATE" --metadata "$entry_meta" --max-age-seconds "$ENTRY_MAX_AGE_SECONDS" --require-ipv4 "$ENTRY_REQUIRE_IPV4" --address-mode "$ENTRY_ADDRESS_MODE")
         if [ -r "$DOH_CERT" ] && [ -r "$DOH_KEY" ]; then
             resolver_args+=(--cert "$DOH_CERT" --key "$DOH_KEY")
         fi
-        "$NODE" "$ENTRY_RESOLVER" "${resolver_args[@]}" 2>&1 | tee -a "$LOG"
-        entry_status=("${PIPESTATUS[@]}")
-        entry_rc=${entry_status[0]}
-        if [ "$entry_rc" -eq 0 ] && [ "${entry_status[1]}" -ne 0 ]; then entry_rc=1; fi
+        entry_rc=1
+        if [ -r "$ENTRY_RESOLVER" ]; then
+            "$NODE" "$ENTRY_RESOLVER" "${resolver_args[@]}" 2>&1 | tee -a "$LOG"
+            entry_status=("${PIPESTATUS[@]}")
+            entry_rc=${entry_status[0]}
+            if [ "$entry_rc" -eq 0 ] && [ "${entry_status[1]}" -ne 0 ]; then entry_rc=1; fi
+        fi
+        publication_mode=resolved
+        render_source="$resolved_out"
+        render_args=()
         if [ "$entry_rc" -ne 0 ]; then
-            if [ "$entry_rc" -eq 4 ]; then
-                record_failure "FlyBird has no validated IPv4 entry; general distribution not replaced"
-            else
-                record_failure "FlyBird entry DNS failed without a matching recent address cache; cached configuration preserved"
-            fi
-            log "入口解析失败，保留旧配置"
-        elif ! "$NODE" "$RENDERER" --in "$resolved_out" --out "$OUT" --base-url "https://${PUBLIC_DOMAIN}" 2>&1 | tee -a "$LOG"; then
+            publication_mode=client-dns
+            render_source="$raw_out"
+            render_args+=(--client-dns-fallback 1)
+            "$PYTHON" - "$entry_meta" "$entry_rc" <<'PYENTRY'
+import json, sys
+from pathlib import Path
+message = "No verified IPv4 entry available" if sys.argv[2] == "4" else "Entry DNS or address validation unavailable"
+Path(sys.argv[1]).write_text(json.dumps({"addressMode": "client-dns", "error": message,
+    "liveHostCount": 0, "cachedHostCount": 0, "resolvedHostCount": 0}), encoding="utf-8")
+PYENTRY
+            log "入口增强暂不可用，将发布最新域名配置供客户端解析"
+        fi
+        private_enabled=0
+        if [ "$PUBLISH_PRIVATE_SUBSCRIPTION" = "1" ] || { [ "$PUBLISH_PRIVATE_SUBSCRIPTION" = "auto" ] && [ -d "$PRIVATE_CACHE_DIR" ]; }; then
+            private_enabled=1
+        fi
+        if ! "$NODE" "$RENDERER" --in "$render_source" --out "$candidate_out" --base-url "https://${PUBLIC_DOMAIN}" "${render_args[@]}" 2>&1 | tee -a "$LOG"; then
             record_failure "FlyBird distribution render failed; cached configuration preserved"
             log "渲染失败，保留旧配置"
-        elif ! publish_private_subscription "$entry_meta"; then
+        elif ! "$NODE" "$PUBLISHER" distribution --in "$candidate_out" --out "$OUT" --mode "$publication_mode" \
+            --raw-metadata "$RAW_METADATA" --entry-metadata "$entry_meta" --enhanced-out "$ENHANCED_OUT" \
+            --private "$private_enabled" --cache-dir "$PRIVATE_CACHE_DIR" --owner "$CACHE_OWNER" 2>&1 | tee -a "$LOG"; then
             record_failure "FlyBird cache publication failed"
             log "缓存发布失败"
         else
             n=$(count_nodes "$OUT")
-            log "完成：$OUT（$n 节点，入口已解析）"
+            log "完成：$OUT（$n 节点，mode=$publication_mode）"
             rc=0
             if [ -n "$HOOK_AFTER_PUBLISH" ]; then
                 sh -c "$HOOK_AFTER_PUBLISH" >>"$LOG" 2>&1 || log "钩子失败（不影响结果）"
