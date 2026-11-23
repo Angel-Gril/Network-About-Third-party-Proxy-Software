@@ -58,6 +58,7 @@ async function main() {
   if (entry.publicFallbackHostCount) warnings.push("Using TLS-validated public node DNS fallback");
   if (entry.cachedHostCount) warnings.push("Using a matching recent entry address cache");
   if (entry.ipv6OnlyHostCount) warnings.push("Entry addresses require client IPv6 connectivity");
+  if (entry.retainedCachedIpv6HostCount) warnings.push("Retained a verified IPv6 path from the matching address cache");
   const metadata = { schemaVersion: 1, provider: "flybird", updatedAt: new Date().toISOString(), sha256: hash,
     proxyCount: config.proxies.length, proxyGroupCount: config["proxy-groups"]?.length || 0,
     ruleCount: config.rules?.length || 0, publicationMode: options.mode,

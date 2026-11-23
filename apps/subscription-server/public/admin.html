@@ -93,7 +93,7 @@
         const status = value.refreshing ? 'Refreshing…' : value.available && !value.lastError
           ? value.enhancement?.status === 'unavailable'
             ? '<span class="ok">Updated</span><span class="schedule-note">Entry DNS delegated to client</span>'
-            : '<span class="ok">Ready</span>'
+            : `<span class="ok">Ready</span>${value.lastWarning ? `<span class="schedule-note">${safe(value.lastWarning)}</span>` : ''}`
           : `<span class="bad">${safe(value.lastError || 'Unavailable')}</span>`;
         const refresh = value.refresh || { enabled: true, intervalMinutes: 360, nextAt: null };
         const interval = intervalParts(refresh.intervalMinutes);

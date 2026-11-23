@@ -3,6 +3,7 @@ import dns from "node:dns/promises";
 import fs from "node:fs/promises";
 import https from "node:https";
 import tls from "node:tls";
+import os from "node:os";
 import { isIP } from "node:net";
 import { pathToFileURL } from "node:url";
 import YAML from "yaml";
@@ -214,20 +215,27 @@ export async function resolveFlyBirdEntries(text, options = {}) {
     { timeoutMs: options.timeoutMs, publicResolver: true }));
   const probeAddress = options.probeAddress || ((address, host, proxies) =>
     verifyPublicAddress(address, host, proxies, options.probeTimeoutMs));
+  const validatorHasIpv6Address = options.validatorHasIpv6Address ?? Object.values(os.networkInterfaces()).flat()
+    .some(item => item && !item.internal && (item.family === "IPv6" || item.family === 6) && usableEntryAddress(item.address));
   const publicResolvers = [...new Set((config.dns?.["default-nameserver"] || []).filter(value => {
     try { const url = new URL(value); return url.protocol === "https:" && usableEntryAddress(url.hostname); }
     catch { return false; }
   }))].slice(0, 4);
   let liveHostCount = 0, cachedHostCount = 0, changedServerCount = 0, cachedServerCount = 0;
   let publicFallbackHostCount = 0, tlsValidatedPublicAddressCount = 0;
+  let retainedCachedIpv6HostCount = 0, deferredIpv6CandidateCount = 0;
   let ipv6OnlyHostCount = [...literalHosts].filter(address => isIP(address) === 6).length;
   const observations = [];
   for (const [host, proxies] of groups) {
     const binding = entryBinding(proxies);
     const cached = previous.hosts[host];
-    const cacheAge = now - Date.parse(cached?.observedAt);
-    const cacheReady = cached?.binding === binding && Number.isFinite(cacheAge) && cacheAge >= 0 && cacheAge <= maxAgeMs &&
-      Array.isArray(cached.addresses) && cached.addresses.length > 0 && cached.addresses.every(usableEntryAddress);
+    const cacheTime = address => cached?.addressObservations?.[address] || cached?.observedAt;
+    const cachedAddresses = cached?.binding === binding && Array.isArray(cached.addresses)
+      ? cached.addresses.filter(address => {
+        const age = now - Date.parse(cacheTime(address));
+        return usableEntryAddress(address) && Number.isFinite(age) && age >= 0 && age <= maxAgeMs;
+      }) : [];
+    const cacheReady = cachedAddresses.length > 0;
     let usedCache = false;
     let addresses = [], source = "upstream-doh";
     // A signed subscription's node DNS is authoritative for its private entry zone.
@@ -239,15 +247,10 @@ export async function resolveFlyBirdEntries(text, options = {}) {
       addresses = replies.flatMap(reply => reply.status === "fulfilled" ? reply.value : []).filter(usableEntryAddress);
       if (addresses.length) break;
     }
-    // A previously verified private-zone mapping is stronger evidence than an
-    // unrelated recursive resolver's answer after the provider DoH has failed.
-    if (!addresses.length && endpoints.length && cacheReady &&
-        (!options.requireIPv4 || cached.addresses.some(address => isIP(address) === 4))) {
-      addresses = cached.addresses; usedCache = true;
-    }
     // A private resolver being configured must not disable validated fallback.
     if (!addresses.length || options.requireIPv4 && !addresses.some(address => isIP(address) === 4)) {
       const upstreamAddresses = addresses;
+      const upstreamSource = source;
       let candidates = [];
       const checked = new Map();
       const accept = async values => {
@@ -256,6 +259,10 @@ export async function resolveFlyBirdEntries(text, options = {}) {
         const verified = [];
         for (const address of unique) {
           if (!checked.has(address)) {
+            if (isIP(address) === 6 && !validatorHasIpv6Address && !options.probeAddress) {
+              // Missing validator connectivity does not prove the candidate is bad.
+              deferredIpv6CandidateCount++; checked.set(address, false); continue;
+            }
             try { checked.set(address, Boolean(await probeAddress(address, host, proxies))); }
             catch { checked.set(address, false); }
           }
@@ -278,19 +285,29 @@ export async function resolveFlyBirdEntries(text, options = {}) {
       }
       if (endpoints.length) {
         if (candidates.length) { publicFallbackHostCount++; tlsValidatedPublicAddressCount += candidates.length; }
-        source = upstreamAddresses.length ? "upstream-doh+public-dns-tls-validated" : "public-dns-tls-validated";
+        source = candidates.length ? upstreamAddresses.length ? "upstream-doh+public-dns-tls-validated"
+          : "public-dns-tls-validated" : upstreamSource;
       }
       addresses = [...upstreamAddresses, ...candidates];
     }
-    let observedAt = new Date(now).toISOString();
+    const freshAddresses = new Set(addresses);
     if (!addresses.length) {
       if (!cacheReady) {
         throw new Error("FlyBird entry DNS failed without a matching recent address cache; publication refused");
       }
-      addresses = cached.addresses; usedCache = true;
+      addresses = cachedAddresses; usedCache = true; source = "cached";
+    } else if (cacheReady) {
+      // A host without IPv6 routing must not erase an independently verified
+      // IPv6 path merely because today's response/probe yielded only IPv4.
+      const families = new Set(addresses.map(isIP));
+      const retained = cachedAddresses.filter(address => !families.has(isIP(address)));
+      if (retained.length) {
+        addresses = [...addresses, ...retained]; usedCache = true; source += "+cached-family";
+        if (retained.some(address => isIP(address) === 6)) retainedCachedIpv6HostCount++;
+      }
     }
-    if (usedCache) { observedAt = cached.observedAt; source = "cached"; cachedHostCount++; cachedServerCount += proxies.length; }
-    else liveHostCount++;
+    if (usedCache) { cachedHostCount++; cachedServerCount += proxies.length; }
+    if (freshAddresses.size) liveHostCount++;
     addresses = [...new Set(addresses)];
     if (options.requireIPv4 && !addresses.some(address => isIP(address) === 4)) {
       throw Object.assign(new Error("FlyBird has no validated IPv4 entry; publication refused"), { code: "ENTRY_IPV4_REQUIRED" });
@@ -299,7 +316,14 @@ export async function resolveFlyBirdEntries(text, options = {}) {
     // The host-map output retains every address and the provider's IP preference.
     // Literal output is retained for consumers that cannot preserve hosts.
     addresses.sort((a, b) => isIP(a) - isIP(b) || a.localeCompare(b));
-    state.hosts[host] = { addresses, binding, observedAt, source };
+    const addressObservations = Object.fromEntries(addresses.map(address => [address,
+      freshAddresses.has(address) ? new Date(now).toISOString() : cacheTime(address)]));
+    const addressSources = Object.fromEntries(addresses.map(address => [address, freshAddresses.has(address)
+      ? source.replace(/\+cached-family$/, "")
+      : cached.addressSources?.[address] || cached.originSource || cached.source || "cached"]));
+    const observedAt = Object.values(addressObservations).sort()[0];
+    state.hosts[host] = { addresses, binding, observedAt, addressObservations, addressSources, source,
+      originSource: source === "cached" ? cached.originSource || cached.source : source };
     observations.push(observedAt);
     if (addressMode === "hosts") {
       config.hosts = { ...config.hosts, [host]: addresses };
@@ -316,6 +340,7 @@ export async function resolveFlyBirdEntries(text, options = {}) {
     metadata: { addressMode, resolvedHostCount: groups.size + literalHosts.size, upstreamLiteralHostCount: literalHosts.size,
       liveHostCount, cachedHostCount, ipv6OnlyHostCount,
       publicFallbackHostCount, tlsValidatedPublicAddressCount,
+      validatorHasIpv6Address, deferredIpv6CandidateCount, retainedCachedIpv6HostCount,
       changedServerCount, cachedServerCount, oldestAddressObservation: observations.sort()[0] || null, maxCacheAgeSeconds: maxAgeMs / 1000 } };
 }
 
@@ -335,7 +360,7 @@ async function main() {
   const result = await resolveFlyBirdEntries(await fs.readFile(options.in, "utf8"), {
     ...identity, state: await readJson(options.state, { schemaVersion: 1, hosts: {} }),
     addressMode: options["address-mode"] || "hosts",
-    requireIPv4: options["require-ipv4"] !== "0",
+    requireIPv4: options["require-ipv4"] === "1",
     maxAgeMs: options["max-age-seconds"] ? Number(options["max-age-seconds"]) * 1000 : undefined,
   });
   await atomicWrite(options.out, result.yaml);

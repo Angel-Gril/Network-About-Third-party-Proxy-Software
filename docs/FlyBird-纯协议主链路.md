@@ -117,10 +117,12 @@ root 服务入口的版本化包装器位于 `apps/subscription-server/deploy/ap
 
 新地址不可得时，仅允许恢复同一原域名、相同整组节点认证/端口/SNI/传输指纹的近期缓存。缓存默认最长 24 小时，可用 `ENTRY_MAX_AGE_SECONDS` 配置，最多七天。失败不会更新地址观察时间；身份变化、缓存过期或缺失时不得生成虚假的增强映射。可信管理员可以导入经实际客户端转发验证的地址，缓存位于私有状态文件，不进入源码。
 
+缓存以 `addressObservations` 分别记录每个地址的观察时间，兼容只有 observedAt 的旧状态。新应答缺少某个地址族时，可保留同一身份下仍有效的该族缓存；过期地址单独排除，刷新 IPv4 不给旧 IPv6 续期。私有查询不可用时先尝试新的公共候选，最后才回退缓存，避免长期锁定同一个旧 IPv4。没有全局 IPv6 地址的验证机不会把公开 AAAA 的直连失败当作该 IPv6 全球不可用；候选计为未验证，已通过客户端真实转发验证的缓存仍可保留。
+
 入口增强不可用时，仍将本轮新原始配置渲染为 `client-dns` 分发：保留域名与节点参数，在专用节点 DNS 之外提供公开 DNS 候选，由客户端解析和执行正常 TLS 校验。不会加入未经验证的 IP。主订阅与 `OUT` 更新；独立的 `ENHANCED_OUT`（默认 `/var/lib/apex-fetch/sub.enhanced.yaml`）只在增强成功时更新。原始提取与分发失败分别记录，配置合法不代表客户端网络已验证可用。
 
 部署可配置 `ENTRY_STATE`（默认 `/var/lib/apex-fetch/entry-addresses.json`）、`DOH_CERT` 和 `DOH_KEY`。身份文件缺失时不代表私有解析已验证。`flybird.json` 的 `publicationMode`、`rawFetchedAt` 和 `enhancement` 区分原始更新与入口增强；`entryResolution` 区分专用解析、经 TLS 校验的公共回退和近期缓存，`lastWarning` 报告降级状态。管理页将 `client-dns` 显示为已更新且入口 DNS 委托客户端，不冒充地址增强已完成。完整性验证、DNS 地址解析与实际代理转发分别验收。
 
 仅复原 DNS 字段不能保证所有客户端工作：部分导入器只保留节点，部分节点区使用私有 DNS。Mihomo 分发默认 `ENTRY_ADDRESS_MODE=hosts`：保留入口域名和全部节点字段，将有效的双栈结果写入 YAML `hosts`，并启用 `dns.use-hosts`。不会将全部节点锁定到一个 IPv4 地址。需要字面地址的消费者可显式选择 `literal`，该模式只选一个地址，必须单独验证其网络条件。丢弃 DNS 和 hosts 的导入器仍需独立适配，不能声称已经兼容。上游无法提供新地址时，缓存回退不等于完成了新的上游 DNS 验证。
 
-地址增强默认 `ENTRY_REQUIRE_IPV4=1`：每个入口必须取得可接受的 IPv4 地址。仅有 IPv6 的候选会拒绝替换增强产物，但不再阻止本轮原始和域名分发更新。明确支持 IPv6 的独立增强环境可显式设置为 0；这不等于官方缺少 IPv4。候选 DNS、TLS 校验与真实代理转发仍分开记录。
+地址增强默认 `ENTRY_REQUIRE_IPV4=0`：取得可接受地址族即可，保留原 ip-version。仅 IPv6 的结果明确要求客户端具备 IPv6 连通性，不能宣称纯 IPv4 网络也已恢复。确有 IPv4-only 发布要求时才显式设置为 1；这仍不阻止原始和域名分发更新。候选 DNS、TLS 校验与真实代理转发分开记录。

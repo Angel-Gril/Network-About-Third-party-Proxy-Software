@@ -53,12 +53,37 @@ test("uses actual DoH answers before public lookup and refreshes observation onl
   assert.equal(result.state.hosts[nodes[0].server].observedAt, new Date(now).toISOString());
 });
 
-test("private-zone outages retain the verified mapping ahead of unrelated public answers", async () => {
+test("private-zone outages retain the verified mapping after public candidates fail validation", async () => {
   const input = document(); input.dns["proxy-server-nameserver"] = ["https://private.example.invalid/dns"];
   const result = await resolveFlyBirdEntries(YAML.stringify(input), { now, state: cached(), dohLookup: failed,
-    lookup: () => assert.fail("do not overwrite a verified private mapping with a public resolver") });
+    lookup: async () => [{ address: "93.184.216.34" }], probeAddress: async () => false });
   assert.equal(result.metadata.cachedHostCount, 1);
   assert.equal(YAML.parse(result.yaml).proxies[0].server, ip);
+});
+
+test("a fresh IPv4 response retains a verified cached IPv6 family without renewing its observation", async () => {
+  const input = document(); input.dns["proxy-server-nameserver"] = ["https://private.example.invalid/dns"];
+  const previous = cached();
+  const result = await resolveFlyBirdEntries(YAML.stringify(input), { now, state: previous, addressMode: "hosts",
+    dohLookup: async (_endpoint, _host, type) => type === 1 ? ["93.184.216.34"] : [],
+  });
+  const host = result.state.hosts[nodes[0].server];
+  assert.deepEqual(host.addresses, ["93.184.216.34", ip]);
+  assert.equal(host.addressObservations[ip], previous.hosts[nodes[0].server].observedAt);
+  assert.equal(host.addressObservations["93.184.216.34"], new Date(now).toISOString());
+  assert.equal(result.metadata.retainedCachedIpv6HostCount, 1);
+  assert.deepEqual(YAML.parse(result.yaml).proxies, input.proxies);
+});
+
+test("one expired address does not discard another independently observed valid family", async () => {
+  const state = cached(25 * 3600000);
+  state.hosts[nodes[0].server].addresses = ["93.184.216.34", ip];
+  state.hosts[nodes[0].server].addressObservations = {
+    "93.184.216.34": new Date(now - 25 * 3600000).toISOString(), [ip]: new Date(now - 1000).toISOString(),
+  };
+  const result = await resolveFlyBirdEntries(YAML.stringify(document()), { now, state, lookup: failed });
+  assert.deepEqual(result.state.hosts[nodes[0].server].addresses, [ip]);
+  assert.equal(result.state.hosts[nodes[0].server].observedAt, new Date(now - 1000).toISOString());
 });
 
 test("a private-zone outage rejects public candidates that fail node TLS validation", async () => {
@@ -192,7 +217,7 @@ test("CLI failure leaves existing output, cache and metadata untouched", async (
   } finally { await fs.rm(root, { recursive: true, force: true }); }
 });
 
-test("CLI default IPv4 policy refuses an IPv6-only source before replacing files", async () => {
+test("an explicit CLI IPv4 policy refuses an IPv6-only source before replacing files", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "entry-ipv4-gate-"));
   try {
     const input = document(); input.proxies = [{ ...input.proxies[0], server: ip }];
@@ -202,11 +227,25 @@ test("CLI default IPv4 policy refuses an IPv6-only source before replacing files
     await fs.writeFile(file("output"), "keep-output");
     await fs.writeFile(file("metadata"), "keep-metadata");
     const result = spawnSync(process.execPath, [fileURLToPath(new URL("../src/flybird-entries.mjs", import.meta.url)),
-      "--in", file("input"), "--out", file("output"), "--state", file("state"), "--metadata", file("metadata")], { encoding: "utf8" });
+      "--in", file("input"), "--out", file("output"), "--state", file("state"), "--metadata", file("metadata"),
+      "--require-ipv4", "1"], { encoding: "utf8" });
     assert.equal(result.status, 4);
     assert.match(result.stderr, /no validated IPv4/);
     assert.equal(await fs.readFile(file("output"), "utf8"), "keep-output");
     assert.equal(await fs.readFile(file("metadata"), "utf8"), "keep-metadata");
+  } finally { await fs.rm(root, { recursive: true, force: true }); }
+});
+
+test("the CLI accepts a provider IPv6 entry by default and records the client connectivity requirement", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "entry-ipv6-default-"));
+  try {
+    const input = document(); input.proxies = [{ ...input.proxies[0], server: ip }];
+    const file = name => path.join(root, name);
+    await fs.writeFile(file("input"), YAML.stringify(input));
+    const result = spawnSync(process.execPath, [fileURLToPath(new URL("../src/flybird-entries.mjs", import.meta.url)),
+      "--in", file("input"), "--out", file("output"), "--state", file("state"), "--metadata", file("metadata")], { encoding: "utf8" });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(JSON.parse(await fs.readFile(file("metadata"), "utf8")).ipv6OnlyHostCount, 1);
   } finally { await fs.rm(root, { recursive: true, force: true }); }
 });
 
