@@ -10,6 +10,11 @@ PRIVATE_PARTS = {'exports', 'fb_export', 'private', '.local', '.vps-work', '.gst
                  'data', 'cache', 'state', 'sessions', 'backups', 'node_modules', '__pycache__'}
 PRIVATE_SUFFIXES = {'.pem', '.key', '.pfx', '.p12', '.dpapi', '.exe', '.dll', '.asar', '.zip', '.tgz', '.log', '.pyc'}
 PRIVATE_NAMES = {'account.json', 'credentials.json', 'session.json', 'tokens.json', 'appsettings.json'}
+# These are deliberately binary, synthetic APXS response bodies used by the
+# provider's independent crypto oracle. Keep the exception limited to .bin
+# files below this fixture directory and cap each file at 1 MiB.
+SYNTHETIC_BINARY_FIXTURE_PREFIX = 'providers/flybird/tests/fixtures/apxs/'
+SYNTHETIC_BINARY_FIXTURE_MAX_BYTES = 1024 * 1024
 URL = re.compile(r'(?:https?|vless|vmess|trojan|ss)://[^\s<>"\x27`]+')
 PATTERNS = {
     'private-key': re.compile(r'-{5}BEGIN (?:[A-Z0-9 ]+ )?PRIVATE KEY-{5}'),
@@ -31,7 +36,12 @@ def findings_for(name, data, extra_denied=()):
             or path.name.lower() in PRIVATE_NAMES
             or (path.name.startswith(('.env', '.dev.vars')) and not path.name.endswith('.example'))):
         result.append({'path': name, 'line': 0, 'rule': 'private-or-generated-path'})
-    if b'\0' in data:
+    allowed_fixture_binary = (
+        name.startswith(SYNTHETIC_BINARY_FIXTURE_PREFIX)
+        and path.suffix.lower() == '.bin'
+        and len(data) <= SYNTHETIC_BINARY_FIXTURE_MAX_BYTES
+    )
+    if b'\0' in data and not allowed_fixture_binary:
         result.append({'path': name, 'line': 0, 'rule': 'unexpected-binary-file'})
         return result
     content = data.decode('utf-8-sig', errors='replace')

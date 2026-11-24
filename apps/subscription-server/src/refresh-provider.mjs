@@ -5,11 +5,13 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import { handleRequest, enhanceMihomoConfig } from "@proxy-toolkit/flybird";
+import { decodeClientStateBundle } from "@proxy-toolkit/flybird/client-state";
 import { fetchMonoCloudSubscription } from "@proxy-toolkit/monocloud";
 import { commitLastGood, recordFailure } from "./cache.mjs";
 import { PROVIDERS } from "./providers.mjs";
 import { prepareSubscription } from "./validate-subscription.mjs";
 import { applyRoutingTemplate } from "./routing-template.mjs";
+import { flyBirdTriggerFile, refreshViaFlyBirdTrigger } from "./flybird-refresh-trigger.mjs";
 import YAML from "yaml";
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -30,8 +32,25 @@ async function readCredential(filePath) {
   return value;
 }
 
+async function readFlyBirdCredential() {
+  const clientStatePath = process.env.FLYBIRD_CLIENT_STATE_FILE;
+  if (!clientStatePath) return readCredential(process.env.FLYBIRD_CREDENTIAL_FILE);
+  const bundle = JSON.parse(await fs.readFile(clientStatePath, "utf8"));
+  const state = await decodeClientStateBundle(bundle);
+  return {
+    token: state.subscriptionToken,
+    subscriptionUrl: state.subscriptionUrl,
+    clientVersion: state.clientVersion,
+    xboardToken: state.xboardToken,
+    apexV2ApiDomains: state.apexV2ApiDomains,
+    apexV2SubscribeDomains: state.apexV2SubscribeDomains,
+  };
+}
+
 async function refreshFlyBird() {
-  const credential = await readCredential(process.env.FLYBIRD_CREDENTIAL_FILE);
+  const triggerFile = flyBirdTriggerFile(process.env, cacheDirectory);
+  if (triggerFile) return refreshViaFlyBirdTrigger({ triggerFile, cacheDirectory });
+  const credential = await readFlyBirdCredential();
   try {
     const domain = process.env.PUBLIC_DOMAIN;
     const internalKey = "internal-refresh-key";
@@ -47,8 +66,24 @@ async function refreshFlyBird() {
         // Fetch again on every DNS failure so a rotated upstream hostname is detected automatically.
         const response = await handleRequest(new Request(`https://${domain}/sub?key=${internalKey}`), {
           ACCESS_KEY: internalKey,
-          ...(credential.token
-            ? { FLYBIRD_TOKEN: credential.token }
+          ...(credential.token || credential.xboardToken
+            ? {
+              ...(credential.token ? { FLYBIRD_TOKEN: credential.token } : {}),
+              ...(credential.xboardToken ? { FLYBIRD_XBOARD_TOKEN: credential.xboardToken } : {}),
+              ...(credential.subscriptionUrl
+                ? { FLYBIRD_SUB_URL_TEMPLATE: credential.subscriptionUrl }
+                : {}),
+              FLYBIRD_APEX_V2: "true",
+              ...(process.env.FLYBIRD_CLIENT_CERT ? { FLYBIRD_CLIENT_CERT: process.env.FLYBIRD_CLIENT_CERT } : {}),
+              ...(process.env.FLYBIRD_CLIENT_KEY ? { FLYBIRD_CLIENT_KEY: process.env.FLYBIRD_CLIENT_KEY } : {}),
+              ...(process.env.FLYBIRD_INSECURE_TLS ? { FLYBIRD_INSECURE_TLS: process.env.FLYBIRD_INSECURE_TLS } : {}),
+              ...(credential.apexV2ApiDomains?.length
+                ? { FLYBIRD_APEX_V2_API_DOMAINS: credential.apexV2ApiDomains.join(",") }
+                : {}),
+              ...(credential.apexV2SubscribeDomains?.length
+                ? { FLYBIRD_APEX_V2_SUB_DOMAINS: credential.apexV2SubscribeDomains.join(",") }
+                : {}),
+            }
             : { FLYBIRD_EMAIL: credential.email, FLYBIRD_PASSWORD: credential.password }),
         });
         const yaml = await response.text();
@@ -76,6 +111,10 @@ async function refreshFlyBird() {
     credential.email = "";
     credential.password = "";
     credential.token = "";
+    credential.subscriptionUrl = "";
+    credential.xboardToken = "";
+    credential.apexV2ApiDomains = [];
+    credential.apexV2SubscribeDomains = [];
   }
 }
 

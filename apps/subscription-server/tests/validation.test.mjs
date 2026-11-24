@@ -61,7 +61,7 @@ test("accepts reachable VLESS WebSocket configurations without entry recovery", 
   assert.equal(result.recoveredServerCount, 0);
 });
 
-test("accepts an unresolved FlyBird entry only through multiple reachable HTTPS proxy resolvers", async () => {
+test("accepts delegated DNS only after the entry question receives an address", async () => {
   const routed = YAML.parse(config());
   routed.dns = { "proxy-server-nameserver": [
     "https://resolver-one.example.invalid/api-v2",
@@ -69,6 +69,7 @@ test("accepts an unresolved FlyBird entry only through multiple reachable HTTPS 
   ] };
   const result = await prepareSubscription(YAML.stringify(routed), {
     allowProxyResolver: true,
+    resolveViaProxy: async () => [{ address: "203.0.113.8", family: 4 }],
     lookup: async host => {
       if (host === "retired.example.invalid") throw Object.assign(new Error("missing"), { code:"ENOTFOUND" });
       return [{ address:"203.0.113.8", family:4 }];
@@ -77,6 +78,14 @@ test("accepts an unresolved FlyBird entry only through multiple reachable HTTPS 
   assert.equal(result.proxyCount, 1);
   assert.equal(result.delegatedHostCount, 1);
   assert.equal(YAML.parse(result.yaml).proxies[0].server, "retired.example.invalid");
+});
+
+test("resolver hostnames resolving is not proof that they can resolve a private node", async () => {
+  const routed = YAML.parse(config());
+  routed.dns = { "proxy-server-nameserver": ["https://one.example.invalid/dns", "https://two.example.invalid/dns"] };
+  await assert.rejects(prepareSubscription(YAML.stringify(routed), {
+    allowProxyResolver: true, lookup,
+  }), /DNS validation/);
 });
 
 test("does not delegate DNS to one resolver, non-HTTPS resolvers or unavailable resolver hosts", async () => {

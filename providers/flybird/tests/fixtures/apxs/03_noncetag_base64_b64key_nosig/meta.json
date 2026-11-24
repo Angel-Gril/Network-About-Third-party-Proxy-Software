@@ -1,0 +1,9 @@
+{
+  "layout": "nonce-tag-ct",
+  "encoding": "base64",
+  "key_derivation": "b64decode",
+  "plain_transform": null,
+  "signature": null,
+  "expect": "ok",
+  "negative_kind": null
+}

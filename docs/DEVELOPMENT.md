@@ -57,7 +57,7 @@ npm audit --audit-level=high
 
 JavaScript 的 workspace 清单各自维护包入口与依赖，根 `package-lock.json` 是唯一锁文件。Python 运行依赖只在 [飞跃 pyproject.toml](../providers/leapvpn/pyproject.toml) 中维护，根 `requirements-dev.txt` 引用该包并添加测试依赖。
 
-更新依赖后重新安装、检查 audit、执行受影响测试和真实构建。Wrangler 的 Miniflare 传递依赖暂将 `sharp` 固定到 0.35.4，以避开 [GHSA-rgj7-g3m4-5g8c](https://github.com/advisories/GHSA-rgj7-g3m4-5g8c)；上游升级到修复版后再移除 override，并重跑 build。
+更新依赖后重新安装、检查 audit、执行受影响测试和真实构建。Wrangler 固定为 4.167.0，其 Miniflare 依赖使用 `sharp` 0.35.5 和 `undici` 7.30.2，修复了旧依赖的高危漏洞；上游已提供修复版，原 `sharp` override 已移除。依赖更新后运行 `npm ci --ignore-scripts`、`npm run verify` 和 `npm audit --audit-level=high`，同时验证锁文件、构建与审计结果。
 
 ## 测试与现场验收
 

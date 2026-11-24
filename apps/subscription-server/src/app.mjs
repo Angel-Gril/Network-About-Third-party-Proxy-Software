@@ -24,7 +24,7 @@ function sendJson(response, status, value) {
   });
 }
 
-async function readStatus(cacheDirectory, refreshSettings) {
+async function readStatus(cacheDirectory, refreshSettings, isRefreshing) {
   const result = {};
   for (const provider of PROVIDERS) {
     const metadata = await readJson(path.join(cacheDirectory, `${provider}.json`), null);
@@ -38,6 +38,7 @@ async function readStatus(cacheDirectory, refreshSettings) {
     result[provider] = {
       available,
       ...(metadata || {}),
+      refreshing: Boolean(await isRefreshing(provider)),
       refresh: refreshTiming(metadata, refreshSettings.providers[provider]),
     };
   }
@@ -88,6 +89,7 @@ export function createHandler(options) {
   const loadRuleAsset = options.loadRuleAsset;
   const getRefreshSettings = options.getRefreshSettings;
   const updateRefreshSettings = options.updateRefreshSettings;
+  const isRefreshing = options.isRefreshing || (() => false);
 
   if (!cacheDirectory || !getReadToken || !getSubscriptionUrl || !rotateSubscriptionUrl || !adminHtml ||
       !triggerRefresh || !loadRuleAsset || !getRefreshSettings || !updateRefreshSettings) {
@@ -110,7 +112,7 @@ export function createHandler(options) {
       }
 
       if (pathName === "/admin/api/status" && request.method === "GET") {
-        sendJson(response, 200, { ok: true, providers: await readStatus(cacheDirectory, await getRefreshSettings()) });
+        sendJson(response, 200, { ok: true, providers: await readStatus(cacheDirectory, await getRefreshSettings(), isRefreshing) });
         return;
       }
 

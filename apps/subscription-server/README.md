@@ -47,6 +47,14 @@ providers/leapvpn/.venv/bin/python -m pip install ./providers/leapvpn
 
 账户配置与 `service.env` 通常为 `root:subsvc 0640`；设备状态和 token 为 `subsvc:subsvc 0600`，状态目录为 0700。不要向公网暴露 Node 的 3100 端口。
 
+飞鸟纯协议刷新使用 API/subscription 两套 mTLS 身份，登录后换取 `access_key`，下载 APXS v2 并在发布前解密、校验节点，再调用 `src/render-flybird.mjs` 恢复完整的策略组和规则；不需要在 Linux 运行 Flutter/GTK/OpenWrt 客户端，也不需要读取进程内存。APXS v2 当前构建使用 AES-256-CTR；解密密钥通过私有部署配置提供，不能提交到仓库。证书和配置放在私有路径（例如 `/etc/apex-fetch/certs/` 和 `/etc/apex-fetch/config`），权限保持 600。
+
+```sh
+FLYBIRD_CLIENT_STATE_FILE=/etc/private-subscription/flybird-client-state.json
+```
+
+设置该文件后，FlyBird 刷新会优先解开 `apex-url-v2` 字段并请求订阅接口，不调用账号密码登录。文件应归 `subsvc:subsvc`、权限 `0600`；bundle 过期或上游撤销会话时，需要在 Windows 客户端重新登录并重新导出。`FLYBIRD_CLIENT_STATE_FILE` 与 `FLYBIRD_CREDENTIAL_FILE` 二选一。
+
 自动续期使用 `LEAPVPN_CREDENTIAL_FILE` 和 `LEAPVPN_AUTH_STATE_FILE`。使用已有会话文件时，取消这两项并设置 `LEAPVPN_SESSION_FILE`，服务改为调用 `-m leapvpn.export --fetch-all`。只有需要自定义命令文件时才设置可选的 `LEAPVPN_EXPORT_SCRIPT`；它会替换模块入口，并接收对应模式的参数。默认初始化不设置此覆盖项。
 
 MonoCloud 使用 `MONOCLOUD_CREDENTIAL_FILE` 中的 `email` 与 `password` 每次登录，不持久化访问 token。当前只发布已验证的 Shadowsocks 套餐；套餐过期、流量用尽、账号出现 VPN 或未知套餐时刷新失败并保留最后有效缓存。
@@ -62,6 +70,8 @@ systemctl enable --now private-subscription.service private-subscription-refresh
 
 timer 每五分钟检查一次逐 provider 设置，默认启用且成功刷新间隔六小时。管理页面 `/admin/` 可独立开关 FlyBird、LeapVPN 和 MonoCloud 的自动刷新，并设置 5 分钟到 30 天的成功刷新间隔；手动刷新不受开关影响。刷新失败后使用 5 分钟短退避重试，不把失败时间推迟到下一个六小时周期。设置原子保存到 `REFRESH_SETTINGS_FILE`，默认位于 `/var/lib/private-subscription/state/subscription-server/refresh-settings.json`。
 
+FlyBird 外部纯协议服务通过 `FLYBIRD_REFRESH_TRIGGER_FILE` 接入统一调度：设为服务可写状态目录中的 trigger 文件路径，安装对应 `.path` 单元触发 root 抓取服务。接入后停用旧 `apex-fetch.timer`，启用 `private-subscription-refresh-flybird.timer`，后台保存的间隔与开关才是实际执行依据。worker 等待真实发布结果，使用同一状态锁防止重复请求；刷新中继续分发最后有效缓存，页面显示 `Refreshing…`。仅触发任务不会更新成功时间，失败/超时保留旧缓存。
+
 每家使用同一个读取 token 提供三种格式；重置任一格式的链接会同时撤销该 provider 的全部旧格式链接：
 
 | 格式 | 路径 | 用途 |
@@ -73,6 +83,8 @@ timer 每五分钟检查一次逐 provider 设置，默认启用且成功刷新�
 管理页的格式选择同时作用于复制和下载。Base64 内容是 UTF-8 URI 列表的标准 Base64 编码；遇到当前转换器不支持的节点协议时返回 422，不发布不完整子集。
 
 LeapVPN 与 MonoCloud 导出后应用 FlyingBird 的共享分流 renderer，保持节点连接参数，检查策略引用，再发布缓存。默认含 15 个策略组和 19 条规则，前两个内网后缀为公开占位示例；GeoX 更新周期为 24 小时。实际节点数随上游目录变化。
+
+FlyBird 纯协议发布另外应用 [网络模板](templates/flybird-network.yaml)，最终为 15 个策略组、21 条规则。网站 DNS 默认经选定节点访问可信 DoH，节点入口单独使用国内加密 DNS；启用 HTTP/TLS/QUIC 嗅探，保留上游 Fake-IP 排除项，关闭 DNS IPv6。`agentrouter.org` 和 `anyrouter.top` 的 DNS 与代理规则优先于 GeoSite/GeoIP。模板文件与 `src/render-flybird.mjs` 必须一同部署；渲染时核对节点参数未被修改，失败不发布。配置不会启用宿主机 TUN，也不会关闭网站证书验证。
 
 FlyBird 每次刷新都会重新读取上游入口；新入口遇到 DNS 校验失败时短暂重试并再次拉取，最多 3 次。入口优先使用服务器系统 DNS 验证；系统 DNS 无记录时，仅当订阅同时声明至少两个可解析的 HTTPS `proxy-server-nameserver`，才保留域名交给 Mihomo 客户端的节点专用解析链，并在缓存元数据记录 `delegatedHostCount`。缺少这组条件仍会拒绝发布并保留最后有效缓存。
 

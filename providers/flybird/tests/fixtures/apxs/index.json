@@ -1,0 +1,134 @@
+[
+  {
+    "case": "01_nonce_base64_sha256_sigbody_hex",
+    "layout": "nonce-ct-tag",
+    "encoding": "base64",
+    "key_derivation": "sha256_utf8",
+    "plain_transform": null,
+    "signature": {
+      "scope": "ciphertext",
+      "encoding": "hex",
+      "prefix": null
+    },
+    "expect": "ok",
+    "negative_kind": null
+  },
+  {
+    "case": "02_tagonce_raw_sha256_sigplain_b64",
+    "layout": "tag-nonce-ct",
+    "encoding": "raw",
+    "key_derivation": "sha256_utf8",
+    "plain_transform": null,
+    "signature": {
+      "scope": "plaintext",
+      "encoding": "base64",
+      "prefix": null
+    },
+    "expect": "ok",
+    "negative_kind": null
+  },
+  {
+    "case": "03_noncetag_base64_b64key_nosig",
+    "layout": "nonce-tag-ct",
+    "encoding": "base64",
+    "key_derivation": "b64decode",
+    "plain_transform": null,
+    "signature": null,
+    "expect": "ok",
+    "negative_kind": null
+  },
+  {
+    "case": "04_gzip_base64_sha256_sigbody_b64",
+    "layout": "nonce-ct-tag",
+    "encoding": "base64",
+    "key_derivation": "sha256_utf8",
+    "plain_transform": "gzip",
+    "signature": {
+      "scope": "ciphertext",
+      "encoding": "base64",
+      "prefix": null
+    },
+    "expect": "ok",
+    "negative_kind": null
+  },
+  {
+    "case": "05_nonce_hex_hexkey_nosig",
+    "layout": "nonce-ct-tag",
+    "encoding": "hex",
+    "key_derivation": "hexdecode",
+    "plain_transform": null,
+    "signature": null,
+    "expect": "ok",
+    "negative_kind": null
+  },
+  {
+    "case": "06_tagonce_base64_sha256_sigbody_hex",
+    "layout": "tag-nonce-ct",
+    "encoding": "base64",
+    "key_derivation": "sha256_utf8",
+    "plain_transform": null,
+    "signature": {
+      "scope": "ciphertext",
+      "encoding": "hex",
+      "prefix": null
+    },
+    "expect": "ok",
+    "negative_kind": null
+  },
+  {
+    "case": "07_sig_prefix_sha256_hex",
+    "layout": "nonce-ct-tag",
+    "encoding": "base64",
+    "key_derivation": "sha256_utf8",
+    "plain_transform": null,
+    "signature": {
+      "scope": "ciphertext",
+      "encoding": "hex",
+      "prefix": "sha256="
+    },
+    "expect": "ok",
+    "negative_kind": null
+  },
+  {
+    "case": "08_json_envelope",
+    "layout": "nonce-ct-tag",
+    "encoding": "json",
+    "key_derivation": "sha256_utf8",
+    "plain_transform": null,
+    "signature": {
+      "scope": "ciphertext",
+      "encoding": "hex",
+      "prefix": null
+    },
+    "expect": "ok",
+    "negative_kind": null
+  },
+  {
+    "case": "90_negative_tampered",
+    "layout": "nonce-ct-tag",
+    "encoding": "base64",
+    "key_derivation": "sha256_utf8",
+    "plain_transform": null,
+    "signature": {
+      "scope": "ciphertext",
+      "encoding": "hex",
+      "prefix": null
+    },
+    "expect": "fail",
+    "negative_kind": "tamper"
+  },
+  {
+    "case": "91_negative_wrongkey",
+    "layout": "nonce-ct-tag",
+    "encoding": "base64",
+    "key_derivation": "sha256_utf8",
+    "plain_transform": null,
+    "signature": {
+      "scope": "ciphertext",
+      "encoding": "hex",
+      "prefix": null
+    },
+    "expect": "fail",
+    "negative_kind": "wrongkey"
+  }
+]

@@ -5,13 +5,13 @@ import path from "node:path";
 import test from "node:test";
 import { isMainModule, runScheduledRefresh } from "../src/scheduled-refresh.mjs";
 
-async function fixture(settings, metadata = null) {
+async function fixture(settings, metadata = null, provider = "monocloud") {
   const root = await fs.mkdtemp(path.join(os.tmpdir(),"scheduled-refresh-"));
   const cache = path.join(root,"cache");
   const settingsFile = path.join(root,"settings.json");
   await fs.mkdir(cache);
-  await fs.writeFile(settingsFile,JSON.stringify({schemaVersion:1,providers:{monocloud:settings}}));
-  if (metadata) await fs.writeFile(path.join(cache,"monocloud.json"),JSON.stringify(metadata));
+  await fs.writeFile(settingsFile,JSON.stringify({schemaVersion:1,providers:{[provider]:settings}}));
+  if (metadata) await fs.writeFile(path.join(cache,`${provider}.json`),JSON.stringify(metadata));
   return {root,cache,settingsFile};
 }
 
@@ -29,6 +29,25 @@ test("scheduled refresh skips disabled and not-due providers", async () => {
       assert.equal(called,false);
     } finally { await fs.rm(f.root,{recursive:true,force:true}); }
   }
+});
+
+test("FlyBird follows the saved two-hour schedule and its automatic refresh switch", async () => {
+  const f = await fixture({ enabled: true, intervalMinutes: 120 },
+    { updatedAt: "2026-10-30T18:36:27Z" }, "flybird");
+  try {
+    let calls = 0;
+    const options = { cacheDirectory: f.cache, settingsFile: f.settingsFile,
+      runner: (_script, provider) => { assert.equal(provider, "flybird"); calls += 1; return 0; } };
+    const early = await runScheduledRefresh("flybird", { ...options, nowMs: Date.parse("2026-10-30T20:36:26Z") });
+    assert.equal(early.reason, "not_due");
+    const due = await runScheduledRefresh("flybird", { ...options, nowMs: Date.parse("2026-10-30T20:36:27Z") });
+    assert.equal(due.skipped, false);
+    assert.equal(calls, 1);
+    await fs.writeFile(f.settingsFile, JSON.stringify({ providers: { flybird: { enabled: false, intervalMinutes: 120 } } }));
+    assert.equal((await runScheduledRefresh("flybird", { ...options,
+      nowMs: Date.parse("2026-10-30T23:36:27Z") })).reason, "disabled");
+    assert.equal(calls, 1);
+  } finally { await fs.rm(f.root, { recursive: true, force: true }); }
 });
 
 test("scheduled refresh runs a due provider and propagates its status", async () => {

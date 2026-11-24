@@ -9,6 +9,7 @@ import { createTokenStore } from "./token-store.mjs";
 import { PROVIDERS } from "./providers.mjs";
 import { createRefreshSettingsStore, defaultRefreshSettingsPath } from "./refresh-settings.mjs";
 import { SUBSCRIPTION_FORMATS } from "./subscription-formats.mjs";
+import { flyBirdTriggerFile, isFlyBirdRefreshRunning } from "./flybird-refresh-trigger.mjs";
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const cacheDirectory = process.env.SUBSCRIPTION_CACHE_DIR || path.join(projectRoot, "data", "cache");
@@ -37,7 +38,7 @@ const buildSubscriptionUrl = (provider, token, format = "clash") =>
 
 async function triggerRefresh(provider) {
   if (!PROVIDERS.has(provider)) return { ok: false, started: false, error: "Unknown provider" };
-  if (running.has(provider)) return { ok: false, started: false, provider, error: "Refresh already running" };
+  if (await isRefreshing(provider)) return { ok: false, started: false, provider, error: "Refresh already running" };
   running.add(provider);
   const child = spawn(process.execPath, [refreshScript, provider], {
     cwd: projectRoot,
@@ -59,6 +60,11 @@ async function triggerRefresh(provider) {
   return { ok: true, started: true, provider };
 }
 
+async function isRefreshing(provider) {
+  return running.has(provider) || (provider === "flybird" &&
+    await isFlyBirdRefreshRunning(flyBirdTriggerFile(process.env, cacheDirectory)));
+}
+
 const handler = createHandler({
   cacheDirectory,
   getReadToken: (provider) => tokenStores.get(provider).get(),
@@ -67,6 +73,7 @@ const handler = createHandler({
     buildSubscriptionUrl(provider, await tokenStores.get(provider).rotate(), format),
   adminHtml,
   triggerRefresh,
+  isRefreshing,
   loadRuleAsset,
   getRefreshSettings: refreshSettings.get,
   updateRefreshSettings: refreshSettings.update,

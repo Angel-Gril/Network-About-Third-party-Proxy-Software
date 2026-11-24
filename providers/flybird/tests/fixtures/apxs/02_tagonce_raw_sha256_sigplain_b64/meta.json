@@ -1,0 +1,13 @@
+{
+  "layout": "tag-nonce-ct",
+  "encoding": "raw",
+  "key_derivation": "sha256_utf8",
+  "plain_transform": null,
+  "signature": {
+    "scope": "plaintext",
+    "encoding": "base64",
+    "prefix": null
+  },
+  "expect": "ok",
+  "negative_kind": null
+}
