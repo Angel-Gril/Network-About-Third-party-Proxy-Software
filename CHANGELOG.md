@@ -2,6 +2,7 @@
 
 ## 未发布
 
+- 修正 Node v2 换票接口的 Authorization 原文传递和 token 字段兼容，避免重复添加 Bearer 或忽略当前响应；登录与换票收到 429 时停止端点批次。
 - 升级 Cloudflare Worker 的 Wrangler 并更新 Miniflare 传递依赖，修复 CI npm audit 报告的 sharp CVE-2026-96889 与高危 undici 漏洞。
 - 修复海外验证机缺少 IPv6 时只发布 IPv4 映射的问题：按地址分别保留观察时间，刷新一族不会抹掉仍有效的另一族；IPv4 不再是增强发布的默认硬性条件，IPv6-only 与未具备验证能力的候选明确标记。
 - 修复私有节点 DNS 存在时完全禁用公共回退的限制：公共候选经原 SNI 的 TLS 校验后可恢复入口并缓存；系统解析无结果时尝试上游公开启动解析器。

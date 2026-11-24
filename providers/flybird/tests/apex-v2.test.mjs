@@ -42,7 +42,33 @@ test("Apex v2 login and access-token calls use the mapped endpoints", async () =
   assert.equal(access.accessKey, "access");
   assert.equal(calls[0].url, "https://api.example.invalid/v2/auth/token");
   assert.equal(calls[1].url, "https://api.example.invalid/v2/feed/access-token");
-  assert.equal(calls[1].init.headers.Authorization, "Bearer auth");
+  assert.equal(calls[1].init.headers.Authorization, "auth");
+});
+
+test("current access-token responses expose the subscription key as token and retain the exact authorization", async () => {
+  const credential = await getApexV2AccessCredential({ apiDomains: ["https://api.example.invalid"],
+    authData: "synthetic.raw.jwt", fetchImpl: async (_url, init) => {
+      assert.equal(init.headers.Authorization, "synthetic.raw.jwt");
+      return Response.json({ data: { token: "subscription-key", expired_at: 1800000000 } });
+    } });
+  assert.equal(credential.accessKey, "subscription-key");
+  assert.equal(normalizeApexV2AccessCredential({ data: { access_key: "explicit", token: "fallback" } }).accessKey, "explicit");
+  await getApexV2AccessCredential({ apiDomains: ["https://api.example.invalid"], authData: "Bearer supplied-token",
+    fetchImpl: async (_url, init) => {
+      assert.equal(init.headers.Authorization, "Bearer supplied-token");
+      return Response.json({ data: { token: "subscription-key" } });
+    } });
+});
+
+test("login and access-token stop the batch when the upstream rate limits a request", async () => {
+  for (const operation of [loginApexV2, getApexV2AccessCredential]) {
+    let calls = 0;
+    await assert.rejects(operation({ apiDomains: ["https://one.example.invalid", "https://two.example.invalid"],
+      email: "user@example.invalid", password: "synthetic-password", authData: "synthetic-jwt",
+      fetchImpl: async () => { calls++; return new Response("limited", { status: 429 }); },
+    }), error => error instanceof ApexV2Error && error.status === 429);
+    assert.equal(calls, 1);
+  }
 });
 
 test("Apex v2 download URLs are built from access_key and current subscribe domains", () => {

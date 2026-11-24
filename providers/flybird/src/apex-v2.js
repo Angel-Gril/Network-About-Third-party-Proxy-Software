@@ -81,6 +81,7 @@ export function normalizeApexV2AccessCredential(payload) {
   const data = payloadData(payload);
   const accessKey = firstString(data, [
     "access_key", "accessKey", "subscription_token", "subscriptionToken", "access_token", "accessToken",
+    "token",
   ]);
   if (!accessKey) throw new ApexV2Error("Apex v2 access-token response is missing access_key");
   return {
@@ -115,7 +116,7 @@ export async function loginApexV2(options = {}) {
       return { ...normalizeApexV2Login(payload), baseUrl: baseUrl(domain) };
     } catch (error) {
       failures.push(error);
-      if (error?.status === 401 || error?.status === 403) break;
+      if ([401, 403, 429].includes(error?.status)) break;
     }
   }
   const status = failures.find((error) => error?.status)?.status || null;
@@ -134,13 +135,15 @@ export async function getApexV2AccessCredential(options = {}) {
         headers: {
           ...CLIENT_HEADERS,
           ...(options.headers || {}),
-          Authorization: `Bearer ${bearer}`,
+          // auth_data already contains the authorization value expected by
+          // this endpoint. Current deployments accept the raw JWT.
+          Authorization: bearer,
         },
       }, "Apex v2 access-token");
       return { ...normalizeApexV2AccessCredential(payload), baseUrl: baseUrl(domain) };
     } catch (error) {
       failures.push(error);
-      if (error?.status === 401 || error?.status === 403) break;
+      if ([401, 403, 429].includes(error?.status)) break;
     }
   }
   const status = failures.find((error) => error?.status)?.status || null;

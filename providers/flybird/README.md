@@ -62,7 +62,7 @@ CLI 会完成登录态交换、订阅下载、APXS v2 解密和签名校验，�
 
 当前官方 7.2.4 APXS v2 构建使用 AES-256-CTR 的 GCM-style counter（`nonce || uint32_be(2)`）。纯协议部署可使用 [src/apxs-ctr.js](src/apxs-ctr.js) 解密原始 `APXS\x02` body；调用方必须显式提供 32-byte AES key，并在签名覆盖范围确认后单独做完整性校验。生产服务的证书和 key 只保存在私有部署目录，不写入仓库。
 
-订阅服务器在拿到客户端态中的 `xboard_token` 后，会先调用 `/v2/feed/access-token` 换取短期 `access_key`、`encrypt_key` 和 `sign_key`，再下载并解密 `/v2/feed/download`；不会把登录密码放到 Linux 服务器上。
+客户端态路径取得 `xboard_token` 后，调用 `/v2/feed/access-token` 时原样传递 Authorization，不强制拼接 Bearer；响应中的 `access_key` 或 `token` 可提供订阅凭据。接口是否返回 `encrypt_key`、`sign_key` 取决于上游版本，不能将旧接口的响应字段套用到所有版本。当前生产纯协议抓取器的账号与证书路径独立于这个客户端态兼容路径。
 
 当前现场状态需要区分账号健康和订阅网关健康：部分 `fbesa.*` v1 面板可以完成登录和
 `/api/v1/user/getSubscribe`，但这不等于订阅可下载。若 v1 `client/subscribe` 返回
