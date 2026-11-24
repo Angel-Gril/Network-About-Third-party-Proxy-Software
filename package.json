@@ -5,9 +5,6 @@
   "type": "module",
   "workspaces": ["providers/flybird", "providers/monocloud", "apps/*"],
   "engines": { "node": ">=22" },
-  "overrides": {
-    "sharp": "0.35.4"
-  },
   "scripts": {
     "test": "npm run test --workspaces --if-present",
     "test:apxs-fixtures": "npm run test:apxs-fixtures --workspace @proxy-toolkit/flybird",

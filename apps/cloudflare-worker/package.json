@@ -5,7 +5,7 @@
   "type": "module",
   "engines": { "node": ">=22" },
   "dependencies": { "@proxy-toolkit/flybird": "1.0.0" },
-  "devDependencies": { "wrangler": "4.130.0" },
+  "devDependencies": { "wrangler": "4.167.0" },
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
