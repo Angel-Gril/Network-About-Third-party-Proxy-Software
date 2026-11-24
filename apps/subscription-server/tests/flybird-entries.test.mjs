@@ -86,6 +86,76 @@ test("one expired address does not discard another independently observed valid 
   assert.equal(result.state.hosts[nodes[0].server].observedAt, new Date(now - 1000).toISOString());
 });
 
+test("a day-old successful IPv6 transfer survives an IPv4-only refresh without a false renewal", async () => {
+  const input = document(); input.dns["proxy-server-nameserver"] = ["https://private.example.invalid/dns"];
+  const state = cached(25 * 3600000);
+  state.hosts[nodes[0].server].addressSources = { [ip]: "local-https-forward" };
+  const saved = structuredClone(state);
+  const result = await resolveFlyBirdEntries(YAML.stringify(input), { now, state, validatorHasIpv6Address: false,
+    dohLookup: failed, lookup: async () => [{ address: "93.184.216.34" }], probeAddress: async () => true,
+  });
+  assert.deepEqual(result.state.hosts[nodes[0].server].addresses, ["93.184.216.34", ip]);
+  assert.equal(result.state.hosts[nodes[0].server].addressObservations[ip], state.hosts[nodes[0].server].observedAt);
+  assert.equal(result.metadata.staleIpv6RecoveryHostCount, 1);
+  assert.deepEqual(state, saved);
+  // A second outage days later retains the proof, even though a newer DNS
+  // answer previously omitted that family and its normal cache expired.
+  const again = await resolveFlyBirdEntries(YAML.stringify(input), { now: now + 3 * 86400000, state: result.state,
+    validatorHasIpv6Address: false, lookup: failed, dohLookup: failed });
+  assert.deepEqual(again.state.hosts[nodes[0].server].addresses, [ip]);
+  assert.equal(again.state.hosts[nodes[0].server].observedAt, state.hosts[nodes[0].server].observedAt);
+});
+
+test("stale IPv6 recovery never crosses identities or bypasses TLS identity checks", async () => {
+  for (const change of [config => { config.proxies[0].password = "other-account"; },
+    config => { config.proxies.forEach(proxy => { proxy.server = "other.example.invalid"; }); },
+    config => { config.proxies[0]["skip-cert-verify"] = true; }]) {
+    const input = document(), state = cached(25 * 3600000);
+    state.hosts[nodes[0].server].addressSources = { [ip]: "local-https-forward" };
+    change(input);
+    await assert.rejects(resolveFlyBirdEntries(YAML.stringify(input), {
+      now, state, validatorHasIpv6Address: false, lookup: failed,
+    }), /publication refused/);
+  }
+});
+
+test("two encrypted resolver operators can refresh IPv6 without an IPv6 validator", async () => {
+  const input = document(); input.dns["proxy-server-nameserver"] = ["https://private.example.invalid/dns"];
+  input.dns["default-nameserver"] = ["https://223.5.5.5/dns-query", "https://223.6.6.6/dns-query",
+    "https://1.12.12.12/dns-query"];
+  const queries = [];
+  const result = await resolveFlyBirdEntries(YAML.stringify(input), { now, validatorHasIpv6Address: false,
+    dohLookup: failed, lookup: async () => [], probeTimeoutMs: 1,
+    publicDohLookup: async (endpoint, _host, type) => { queries.push([endpoint, type]); return type === 28 ? [ip] : []; },
+  });
+  assert.equal(queries.length, 6);
+  const address = Object.keys(result.state.hosts[nodes[0].server].addressSources)[0];
+  assert.equal(result.state.hosts[nodes[0].server].addressSources[address], "public-dns-consensus-ipv6");
+  assert.equal(result.metadata.publicDnsConsensusIpv6Count, 1);
+  assert.equal(result.metadata.tlsValidatedPublicAddressCount, 0);
+});
+
+test("a successful IPv4 candidate does not short-circuit supplemental AAAA discovery", async () => {
+  const input = document(); input.dns["proxy-server-nameserver"] = ["https://private.example.invalid/dns"];
+  input.dns["default-nameserver"] = ["https://223.5.5.5/dns-query", "https://1.12.12.12/dns-query"];
+  const calls = [];
+  const result = await resolveFlyBirdEntries(YAML.stringify(input), { now, validatorHasIpv6Address: false,
+    dohLookup: failed, lookup: async () => [{ address: "93.184.216.34" }], probeAddress: async () => true,
+    publicDohLookup: async (endpoint, _host, type) => { calls.push([endpoint, type]);
+      return endpoint.includes("1.12") && type === 28 ? [ip] : []; },
+  });
+  assert.equal(calls.length, 4);
+  assert.deepEqual(result.state.hosts[nodes[0].server].addresses, ["93.184.216.34", ip]);
+});
+
+test("two IPs from one DNS operator cannot establish independent IPv6 agreement", async () => {
+  const input = document(); input.dns["proxy-server-nameserver"] = ["https://private.example.invalid/dns"];
+  input.dns["default-nameserver"] = ["https://223.5.5.5/dns-query", "https://223.6.6.6/dns-query"];
+  await assert.rejects(resolveFlyBirdEntries(YAML.stringify(input), { now, validatorHasIpv6Address: false,
+    dohLookup: failed, lookup: failed, publicDohLookup: async (_endpoint, _host, type) => type === 28 ? [ip] : [],
+  }), /publication refused/);
+});
+
 test("a private-zone outage rejects public candidates that fail node TLS validation", async () => {
   const input = document(); input.dns["proxy-server-nameserver"] = ["https://private.example.invalid/dns"];
   let calls = 0;

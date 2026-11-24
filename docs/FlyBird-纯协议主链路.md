@@ -119,6 +119,10 @@ root 服务入口的版本化包装器位于 `apps/subscription-server/deploy/ap
 
 缓存以 `addressObservations` 分别记录每个地址的观察时间，兼容只有 observedAt 的旧状态。新应答缺少某个地址族时，可保留同一身份下仍有效的该族缓存；过期地址单独排除，刷新 IPv4 不给旧 IPv6 续期。私有查询不可用时先尝试新的公共候选，最后才回退缓存，避免长期锁定同一个旧 IPv4。没有全局 IPv6 地址的验证机不会把公开 AAAA 的直连失败当作该 IPv6 全球不可用；候选计为未验证，已通过客户端真实转发验证的缓存仍可保留。
 
+IPv4 探测成功不能提前终止 AAAA 查询。验证机缺少 IPv6 时，两个独立运营方的公开加密 DNS 对同一 IPv6 的一致应答可作为解析候选，记录为 `public-dns-consensus-ipv6`；同一运营方的两个地址不计为独立来源，mTLS 身份不发给公共 DNS。这只证明解析应答一致，不证明服务器或客户端已完成 IPv6 转发；节点 TLS 校验保持开启，元数据和警告明确此限制。
+
+曾由可信客户端完成真实 HTTPS 转发的 IPv6（来源 `local-https-forward`）另存 `recoveryAddresses`，严格绑定同一原域名和整组节点参数。普通 DNS 缓存到期、上游暂不可查且验证机没有 IPv6 时，它仍可作为陈旧恢复候选，保留原始时间并提示 `staleIpv6RecoveryHostCount`，而非在 24 小时边界无条件退回只有 IPv4 的配置。此恢复证据不会因刷新或 DNS 投票而续期，不能称作实时验证；换域名、认证、端口、SNI 或关闭证书校验后不能跨身份复用。这是一项故障回退策略，不保证旧地址永久可用；取得新有效 IPv6 时优先使用新结果。
+
 入口增强不可用时，仍将本轮新原始配置渲染为 `client-dns` 分发：保留域名与节点参数，在专用节点 DNS 之外提供公开 DNS 候选，由客户端解析和执行正常 TLS 校验。不会加入未经验证的 IP。主订阅与 `OUT` 更新；独立的 `ENHANCED_OUT`（默认 `/var/lib/apex-fetch/sub.enhanced.yaml`）只在增强成功时更新。原始提取与分发失败分别记录，配置合法不代表客户端网络已验证可用。
 
 部署可配置 `ENTRY_STATE`（默认 `/var/lib/apex-fetch/entry-addresses.json`）、`DOH_CERT` 和 `DOH_KEY`。身份文件缺失时不代表私有解析已验证。`flybird.json` 的 `publicationMode`、`rawFetchedAt` 和 `enhancement` 区分原始更新与入口增强；`entryResolution` 区分专用解析、经 TLS 校验的公共回退和近期缓存，`lastWarning` 报告降级状态。管理页将 `client-dns` 显示为已更新且入口 DNS 委托客户端，不冒充地址增强已完成。完整性验证、DNS 地址解析与实际代理转发分别验收。
