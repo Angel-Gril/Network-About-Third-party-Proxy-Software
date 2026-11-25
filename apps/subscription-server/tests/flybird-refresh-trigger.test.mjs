@@ -14,7 +14,11 @@ async function fixture() {
   const metadataPath = path.join(cacheDirectory, "flybird.json");
   await atomicWrite(path.join(cacheDirectory, "flybird.yaml"), "last-good-yaml");
   await atomicWrite(metadataPath, JSON.stringify({ updatedAt: "2026-10-30T10:00:00Z", proxyCount: 74, lastError: null }));
-  return { root, cacheDirectory, triggerFile, metadataPath, timeoutMs: 1000, pollMs: 5 };
+  // A Windows atomic metadata replacement can retry sharing violations for
+  // several seconds. The fixture must allow that publication to finish; the
+  // missing-publisher case below still supplies its own short timeout.
+  return { root, cacheDirectory, triggerFile, metadataPath,
+    timeoutMs: process.platform === "win32" ? 10_000 : 1000, pollMs: 5 };
 }
 
 async function requested(f) {
