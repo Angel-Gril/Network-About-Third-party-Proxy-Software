@@ -59,6 +59,8 @@ async function main() {
   if (entry.cachedHostCount) warnings.push("Using a matching recent entry address cache");
   if (entry.ipv6OnlyHostCount) warnings.push("Entry addresses require client IPv6 connectivity");
   if (entry.retainedCachedIpv6HostCount) warnings.push("Retained a verified IPv6 path from the matching address cache");
+  if (entry.publicDnsConsensusIpv6Count) warnings.push("IPv6 refreshed by independent encrypted DNS agreement; not forwarding-tested on this server");
+  if (entry.staleIpv6RecoveryHostCount) warnings.push("Using last successful IPv6 recovery address beyond DNS cache age; live IPv6 validation unavailable");
   const metadata = { schemaVersion: 1, provider: "flybird", updatedAt: new Date().toISOString(), sha256: hash,
     proxyCount: config.proxies.length, proxyGroupCount: config["proxy-groups"]?.length || 0,
     ruleCount: config.rules?.length || 0, publicationMode: options.mode,

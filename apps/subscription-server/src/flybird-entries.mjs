@@ -175,6 +175,18 @@ async function verifyPublicAddress(address, host, proxies, timeoutMs = 2500) {
   return false;
 }
 
+function publicResolverAuthority(endpoint) {
+  const host = new URL(endpoint).hostname;
+  for (const [operator, hosts] of Object.entries({
+    alibaba: ["223.5.5.5", "223.6.6.6"], tencent: ["1.12.12.12", "120.53.53.53"],
+    cloudflare: ["1.1.1.1", "1.0.0.1"], google: ["8.8.8.8", "8.8.4.4"], quad9: ["9.9.9.9", "149.112.112.112"],
+  })) if (hosts.includes(host)) return operator;
+  return host;
+}
+
+const canonicalAddress = address => isIP(address) === 6
+  ? new URL(`http://[${address}]/`).hostname.slice(1, -1) : address;
+
 export async function resolveFlyBirdEntries(text, options = {}) {
   const config = YAML.parse(text, { uniqueKeys: true, maxAliasCount: 100 });
   if (!config || !Array.isArray(config.proxies) || !config.proxies.length) throw new Error("FlyBird has no proxy entries");
@@ -224,20 +236,38 @@ export async function resolveFlyBirdEntries(text, options = {}) {
   let liveHostCount = 0, cachedHostCount = 0, changedServerCount = 0, cachedServerCount = 0;
   let publicFallbackHostCount = 0, tlsValidatedPublicAddressCount = 0;
   let retainedCachedIpv6HostCount = 0, deferredIpv6CandidateCount = 0;
+  let publicDnsConsensusIpv6Count = 0, staleIpv6RecoveryHostCount = 0;
   let ipv6OnlyHostCount = [...literalHosts].filter(address => isIP(address) === 6).length;
   const observations = [];
   for (const [host, proxies] of groups) {
     const binding = entryBinding(proxies);
     const cached = previous.hosts[host];
-    const cacheTime = address => cached?.addressObservations?.[address] || cached?.observedAt;
+    // A recovery observation is evidence of an actual successful transfer,
+    // separate from a short-lived DNS cache. Never manufacture a new timestamp.
+    const recoveryCandidates = cached?.binding === binding ? [
+      ...(Array.isArray(cached.recoveryAddresses) ? cached.recoveryAddresses : []),
+      ...(cached.addresses || []).map(address => ({ address,
+        observedAt: cached.addressObservations?.[address] || cached.observedAt,
+        source: cached.addressSources?.[address] || cached.originSource || cached.source })),
+    ] : [];
+    const recoveries = [...new Map(recoveryCandidates.filter(row => row && row.source === "local-https-forward" &&
+      isIP(row.address) === 6 && usableEntryAddress(row.address) &&
+      Number.isFinite(Date.parse(row.observedAt)) && Date.parse(row.observedAt) <= now &&
+      proxies.every(proxy => proxy["skip-cert-verify"] !== true && (proxy.sni || proxy.servername)))
+      .map(row => [canonicalAddress(row.address), row])).values()].slice(0, 8);
+    const cacheTime = address => cached?.addressObservations?.[address] ||
+      recoveries.find(row => row.address === address)?.observedAt || cached?.observedAt;
     const cachedAddresses = cached?.binding === binding && Array.isArray(cached.addresses)
       ? cached.addresses.filter(address => {
         const age = now - Date.parse(cacheTime(address));
         return usableEntryAddress(address) && Number.isFinite(age) && age >= 0 && age <= maxAgeMs;
       }) : [];
     const cacheReady = cachedAddresses.length > 0;
+    const staleRecovery = !validatorHasIpv6Address
+      ? recoveries.filter(row => now - Date.parse(row.observedAt) > maxAgeMs) : [];
     let usedCache = false;
     let addresses = [], source = "upstream-doh";
+    const freshSources = new Map();
     // A signed subscription's node DNS is authoritative for its private entry zone.
     for (const endpoint of endpoints.slice(0, 3)) {
       const replies = await Promise.allSettled([1, 28].map(type => dohLookup(endpoint, host, type)));
@@ -248,11 +278,13 @@ export async function resolveFlyBirdEntries(text, options = {}) {
       if (addresses.length) break;
     }
     // A private resolver being configured must not disable validated fallback.
-    if (!addresses.length || options.requireIPv4 && !addresses.some(address => isIP(address) === 4)) {
+    if (!addresses.length || options.requireIPv4 && !addresses.some(address => isIP(address) === 4) ||
+        !validatorHasIpv6Address && !addresses.some(address => isIP(address) === 6)) {
       const upstreamAddresses = addresses;
       const upstreamSource = source;
       let candidates = [];
       const checked = new Map();
+      const ipv6Votes = new Map();
       const accept = async values => {
         const unique = [...new Set(values.filter(usableEntryAddress))].slice(0, 8);
         if (!endpoints.length) return unique;
@@ -266,7 +298,7 @@ export async function resolveFlyBirdEntries(text, options = {}) {
             try { checked.set(address, Boolean(await probeAddress(address, host, proxies))); }
             catch { checked.set(address, false); }
           }
-          if (checked.get(address)) verified.push(address);
+          if (checked.get(address)) { verified.push(address); freshSources.set(address, "public-dns-tls-validated"); }
         }
         return verified;
       };
@@ -276,26 +308,44 @@ export async function resolveFlyBirdEntries(text, options = {}) {
       } catch { /* A failed resolver is not evidence that a node is valid. */ }
       candidates = await accept(candidates);
       for (const endpoint of publicResolvers) {
-        if (candidates.length) break;
+        // An IPv4 answer cannot end discovery before IPv6 is considered.
+        if (candidates.length && (validatorHasIpv6Address || candidates.some(address => isIP(address) === 6))) break;
         const replies = await Promise.allSettled([1, 28].map(type => publicDohLookup(endpoint, host, type)));
         if (replies.some(reply => reply.status === "rejected" && reply.reason?.code === "UPSTREAM_RATE_LIMIT")) {
           throw new Error("FlyBird public resolver rate limited; publication refused");
         }
-        candidates = await accept(replies.flatMap(reply => reply.status === "fulfilled" ? reply.value : []));
+        const values = replies.flatMap(reply => reply.status === "fulfilled" ? reply.value : [])
+          .filter(usableEntryAddress);
+        if (!validatorHasIpv6Address && !options.probeAddress) {
+          for (const address of values.filter(address => isIP(address) === 6).map(canonicalAddress)) {
+            if (!ipv6Votes.has(address)) ipv6Votes.set(address, new Set());
+            ipv6Votes.get(address).add(publicResolverAuthority(endpoint));
+          }
+        }
+        candidates = [...new Set([...candidates, ...await accept(values)])];
       }
+      const authenticatedNodes = proxies.every(proxy => proxy["skip-cert-verify"] !== true &&
+        (["anytls", "trojan"].includes(proxy.type) || proxy.tls === true));
+      const consensus = authenticatedNodes
+        ? [...ipv6Votes].filter(([, voters]) => voters.size >= 2).map(([address]) => address) : [];
+      for (const address of consensus) freshSources.set(address, "public-dns-consensus-ipv6");
+      publicDnsConsensusIpv6Count += consensus.length;
+      // Resolution evidence is explicit; it is never counted as a TLS/forwarding test.
+      const tlsCount = candidates.length;
+      candidates = [...new Set([...candidates, ...consensus])];
       if (endpoints.length) {
-        if (candidates.length) { publicFallbackHostCount++; tlsValidatedPublicAddressCount += candidates.length; }
-        source = candidates.length ? upstreamAddresses.length ? "upstream-doh+public-dns-tls-validated"
-          : "public-dns-tls-validated" : upstreamSource;
+        if (candidates.length) { publicFallbackHostCount++; tlsValidatedPublicAddressCount += tlsCount; }
+        source = candidates.length ? consensus.length ? "public-dns-consensus+tls-fallback"
+          : upstreamAddresses.length ? "upstream-doh+public-dns-tls-validated" : "public-dns-tls-validated" : upstreamSource;
       }
       addresses = [...upstreamAddresses, ...candidates];
     }
     const freshAddresses = new Set(addresses);
     if (!addresses.length) {
-      if (!cacheReady) {
+      if (!cacheReady && !staleRecovery.length) {
         throw new Error("FlyBird entry DNS failed without a matching recent address cache; publication refused");
       }
-      addresses = cachedAddresses; usedCache = true; source = "cached";
+      addresses = [...cachedAddresses, ...staleRecovery.map(row => row.address)]; usedCache = true; source = "cached";
     } else if (cacheReady) {
       // A host without IPv6 routing must not erase an independently verified
       // IPv6 path merely because today's response/probe yielded only IPv4.
@@ -306,6 +356,10 @@ export async function resolveFlyBirdEntries(text, options = {}) {
         if (retained.some(address => isIP(address) === 6)) retainedCachedIpv6HostCount++;
       }
     }
+    if (!addresses.some(address => isIP(address) === 6) && staleRecovery.length) {
+      addresses.push(...staleRecovery.map(row => row.address)); usedCache = true; source += "+stale-ipv6-recovery";
+    }
+    if (addresses.some(address => staleRecovery.some(row => row.address === address))) staleIpv6RecoveryHostCount++;
     if (usedCache) { cachedHostCount++; cachedServerCount += proxies.length; }
     if (freshAddresses.size) liveHostCount++;
     addresses = [...new Set(addresses)];
@@ -319,10 +373,11 @@ export async function resolveFlyBirdEntries(text, options = {}) {
     const addressObservations = Object.fromEntries(addresses.map(address => [address,
       freshAddresses.has(address) ? new Date(now).toISOString() : cacheTime(address)]));
     const addressSources = Object.fromEntries(addresses.map(address => [address, freshAddresses.has(address)
-      ? source.replace(/\+cached-family$/, "")
-      : cached.addressSources?.[address] || cached.originSource || cached.source || "cached"]));
+      ? freshSources.get(address) || source.replace(/\+cached-family$/, "")
+      : cached.addressSources?.[address] || recoveries.find(row => row.address === address)?.source || cached.originSource || cached.source || "cached"]));
     const observedAt = Object.values(addressObservations).sort()[0];
-    state.hosts[host] = { addresses, binding, observedAt, addressObservations, addressSources, source,
+    state.hosts[host] = { addresses, binding, observedAt, addressObservations, addressSources,
+      recoveryAddresses: recoveries, source,
       originSource: source === "cached" ? cached.originSource || cached.source : source };
     observations.push(observedAt);
     if (addressMode === "hosts") {
@@ -341,6 +396,7 @@ export async function resolveFlyBirdEntries(text, options = {}) {
       liveHostCount, cachedHostCount, ipv6OnlyHostCount,
       publicFallbackHostCount, tlsValidatedPublicAddressCount,
       validatorHasIpv6Address, deferredIpv6CandidateCount, retainedCachedIpv6HostCount,
+      publicDnsConsensusIpv6Count, staleIpv6RecoveryHostCount,
       changedServerCount, cachedServerCount, oldestAddressObservation: observations.sort()[0] || null, maxCacheAgeSeconds: maxAgeMs / 1000 } };
 }
 
